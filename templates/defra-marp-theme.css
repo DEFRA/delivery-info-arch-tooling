@@ -1,0 +1,145 @@
+/* @theme defra */
+
+@import "default";
+
+ol {
+  counter-reset: item;
+}
+
+ol li {
+  display: block;
+}
+
+ol li:before {
+  content: counters(item, ".") ". ";
+  counter-increment: item;
+}
+
+h1 {
+  color: rgb(0, 176, 80);
+  font-weight: normal;
+}
+
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: rgb(0, 176, 80);
+  font-weight: normal;
+  margin-top: 0;
+}
+
+section {
+  font-family: "Arial", sans-serif;
+  font-size: 14px;
+  line-height: 140%;
+}
+
+.contents {
+  font-size: 12px;
+  line-height: 135%;
+  column-count: 2;
+}
+
+footer {
+  font-size: 1em;
+  display: flex;
+  justify-content: space-between;
+
+  border-top: 1px solid rgb(0, 176, 80);
+  padding: 1em 0 0 0;
+  width: 100%;
+  color: rgb(0, 176, 80);
+
+  .sensitivity {
+    color: black;
+    width: 150px;
+  }
+
+  text-align: center;
+
+  .footer-summary {
+    color: rgb(0, 176, 80);
+    width: 100%;
+  }
+}
+
+/* Override footer styling for title slide only */
+section:first-of-type footer {
+  border-top: none;
+
+  .sensitivity {
+    color: white;
+  }
+}
+
+section::after {
+  font-size: 1em;
+  color: rgb(0, 176, 80);
+}
+
+.flex-container {
+  display: flex;
+  flex-flow: wrap;
+}
+
+.column {
+  flex: 0 0 42%;
+  padding: 0% 3%;
+}
+
+.column-small {
+  flex: 0 0 25%;
+  padding: 0 1%;
+}
+
+.column-large {
+  flex: 0 0 70%;
+  padding: 0 1%;
+}
+
+.border {
+  box-sizing: border-box;
+  height: 100%;
+  padding: 2%;
+}
+
+table,
+tr,
+td,
+th {
+  /* Override contextual styling */
+  border: 3px white solid !important;
+}
+
+table {
+  margin: 0;
+  padding: 0;
+  border-width: 0;
+  border-collapse: collapse;
+}
+
+th {
+  background-color: rgb(0, 175, 65);
+  color: white;
+  padding: 8px;
+}
+
+tr:nth-child(even) {
+  background-color: rgb(203, 227, 207);
+}
+
+tr:nth-child(odd) {
+  background-color: rgb(231, 242, 232);
+}
+
+.title-page-main {
+  font-size: 2em;
+  color: white;
+}
+
+.title-page-sub {
+  font-size: 1.5em;
+  color: white;
+}

@@ -184,9 +184,31 @@ Options:
 ### PowerPoint Generation
 
 - **Marp-based**: Uses Marp CLI for high-quality conversions
+- **Defra branding**: Bundled Defra templates and styling
 - **Heading-based slides**: Configure which heading level triggers new slides
 - **Theme support**: Customizable themes and styling
 - **Diagram embedding**: Converts LikeC4View components to images
+
+### Bundled Templates
+
+The library includes Defra-branded templates for PowerPoint generation:
+
+```
+templates/
+├── defra-marp-theme.css              # Marp CSS theme
+├── defra-template.pptx               # Reference PowerPoint template
+├── defra-title-background-16-9.png   # Section slide background
+├── defra-title-background-full-16-9.png  # Title slide background
+```
+
+**Template Priority**: The generator looks for templates in this order:
+1. Your project's `templates/` directory (allows customisation)
+2. Library's bundled `templates/` (Defra defaults)
+
+To customise, copy templates to your project:
+```bash
+cp -r node_modules/@defra/delivery-info-arch-tooling/templates ./templates
+```
 
 ### PDF Export
 
