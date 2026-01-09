@@ -1,0 +1,225 @@
+#!/usr/bin/env node
+
+/**
+ * CLI for publishing documentation to Confluence
+ * @module @defra/delivery-info-arch-tooling/bin/publish-to-confluence
+ */
+
+const fs = require('fs').promises
+const path = require('path')
+const { glob } = require('glob')
+
+// Import from library
+const confluenceLib = require('../lib/confluence')
+const { lib: { apiClient, pageManager, contentProcessor, github, imageHandler, hierarchyManager, utils } } = confluenceLib
+
+// Configuration
+const CONFIG = {
+    confluenceUrl: process.env.CONFLUENCE_URL || 'https://eaflood.atlassian.net',
+    defaultSpace: process.env.CONFLUENCE_SPACE || '',
+    generatedLabel: process.env.GENERATED_LABEL || 'generated',
+    contentRoot: null
+}
+
+// Statistics
+const stats = {
+    success: 0,
+    failed: 0,
+    skipped: 0
+}
+
+/**
+ * Parse command-line arguments
+ */
+function parseArgs() {
+    const args = process.argv.slice(2)
+    const options = {
+        space: null,
+        parentPageId: null,
+        username: null,
+        apiToken: null,
+        configPath: null,
+        help: false
+    }
+
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i]
+        switch (arg) {
+            case '--space':
+            case '-s':
+                options.space = args[++i]
+                break
+            case '--parent-page-id':
+            case '-p':
+                options.parentPageId = args[++i]
+                break
+            case '--username':
+            case '-u':
+                options.username = args[++i]
+                break
+            case '--api-token':
+            case '-t':
+                options.apiToken = args[++i]
+                break
+            case '--config':
+            case '-c':
+                options.configPath = args[++i]
+                break
+            case '--help':
+            case '-h':
+                options.help = true
+                break
+            default:
+                if (arg.startsWith('-')) {
+                    console.error(`Unknown option: ${arg}`)
+                    console.error('Use --help for usage information')
+                    process.exit(1)
+                }
+                break
+        }
+    }
+
+    return options
+}
+
+/**
+ * Display help message
+ */
+function showHelp() {
+    console.log(`
+Usage: publish-to-confluence [OPTIONS]
+
+Options:
+  --space, -s SPACE_KEY          Filter: only publish files targeting this space
+  --parent-page-id, -p PAGE_ID   Parent page ID
+  --username, -u USERNAME        Confluence username/email
+  --api-token, -t TOKEN          Confluence API token
+  --config, -c PATH              Path to confluence-config.json
+  --help, -h                     Show this help message
+
+Environment Variables:
+  CONFLUENCE_URL                 Confluence instance URL
+  CONFLUENCE_USERNAME            Confluence username
+  CONFLUENCE_API_TOKEN           Confluence API token
+  CONFLUENCE_SPACE               Default space key
+
+Example:
+  publish-to-confluence --space TIDIA --config ./confluence-config.json
+`)
+}
+
+/**
+ * Load configuration from file
+ */
+async function loadConfig(configPath) {
+    const configFile = configPath || path.join(process.cwd(), 'confluence-config.json')
+
+    try {
+        const configContent = await fs.readFile(configFile, 'utf-8')
+        return JSON.parse(configContent)
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            console.warn(`⚠️  Config file not found: ${configFile}`)
+            return {}
+        }
+        throw error
+    }
+}
+
+/**
+ * Validate required configuration
+ */
+function validateConfig(options) {
+    const username = options.username || process.env.CONFLUENCE_USERNAME
+    const apiToken = options.apiToken || process.env.CONFLUENCE_API_TOKEN
+
+    if (!username || !apiToken) {
+        console.error('❌ Error: Required variables not set')
+        console.error(`   CONFLUENCE_USERNAME: ${username ? 'SET' : 'NOT SET'}`)
+        console.error(`   CONFLUENCE_API_TOKEN: ${apiToken ? 'SET' : 'NOT SET'}`)
+        process.exit(1)
+    }
+
+    return { username, apiToken }
+}
+
+/**
+ * Main execution function
+ */
+async function main() {
+    const options = parseArgs()
+
+    if (options.help) {
+        showHelp()
+        process.exit(0)
+    }
+
+    const auth = validateConfig(options)
+    const config = await loadConfig(options.configPath)
+
+    // Initialize module configurations
+    apiClient.setConfig(CONFIG)
+    pageManager.setConfig(CONFIG)
+    imageHandler.setConfig(CONFIG)
+    hierarchyManager.setConfig(CONFIG)
+
+    // Determine content root
+    const repoRoot = process.cwd()
+    if (await fs.access(path.join(repoRoot, 'docs')).then(() => true).catch(() => false)) {
+        CONFIG.contentRoot = 'docs'
+    } else if (await fs.access(path.join(repoRoot, 'astro', 'src', 'content', 'docs')).then(() => true).catch(() => false)) {
+        CONFIG.contentRoot = path.join('astro', 'src', 'content', 'docs')
+    } else {
+        console.error('❌ Error: Could not find docs directory')
+        process.exit(1)
+    }
+
+    console.log('📝 Publishing to Confluence via REST API...')
+    console.log('')
+    console.log(`   Content root: ${CONFIG.contentRoot}`)
+    console.log(`   Confluence URL: ${CONFIG.confluenceUrl}`)
+    console.log(`   Space filter: ${options.space || 'ALL'}`)
+    console.log('')
+
+    // Determine parent page ID
+    const parentPageId = options.parentPageId || process.env.PARENT_PAGE_ID || config.parentPageId || null
+
+    // Use the library's publish function to actually publish
+    console.log('📝 Publishing configured paths from confluence-config.json...')
+    if (config.publishPaths && Array.isArray(config.publishPaths) && config.publishPaths.length > 0) {
+        console.log(`Found ${config.publishPaths.length} path(s) to process`)
+        console.log('')
+    }
+
+    const result = await confluenceLib.publish({
+        configPath: options.configPath,
+        spaceFilter: options.space,
+        parentPageId: options.parentPageId || process.env.PARENT_PAGE_ID || config.parentPageId || null,
+        auth,
+        contentRoot: CONFIG.contentRoot,
+        confluenceUrl: CONFIG.confluenceUrl
+    })
+
+    stats.success = result.success
+    stats.failed = result.failed
+    stats.skipped = result.skipped
+
+    console.log('')
+    console.log('================================================')
+    console.log('Publishing Summary:')
+    console.log(`  ✅ Successful: ${stats.success}`)
+    console.log(`  ❌ Failed: ${stats.failed}`)
+    console.log(`  ⏭️  Skipped: ${stats.skipped}`)
+    console.log('================================================')
+
+    if (stats.failed > 0) {
+        process.exit(1)
+    }
+}
+
+// Run main function
+main().catch((error) => {
+    console.error('❌ Fatal error:', error)
+    process.exit(1)
+})
+

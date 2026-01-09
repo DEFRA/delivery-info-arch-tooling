@@ -1,0 +1,39 @@
+{
+  "$schema": "./confluence-config.schema.json",
+  "$comment": "Example Confluence publishing configuration - copy to confluence-config.json and customize",
+
+  "spaceMapping": {
+    "$comment": "Map system/directory names to Confluence space keys",
+    "BTMS": "BTMS",
+    "Trade": "TIDIA",
+    "ALVS": "ALVS"
+  },
+
+  "parentPageId": "",
+  "$commentParentPageId": "Optional: Root parent page ID. Leave empty to use space root.",
+
+  "publishPaths": [
+    {
+      "path": "systems/BTMS/**/*.md",
+      "type": "markdown",
+      "description": "BTMS system documentation",
+      "exclude": [
+        "README.md",
+        "_*.md"
+      ]
+    },
+    {
+      "path": "Trade/**/*.md",
+      "type": "markdown",
+      "description": "Trade vertical documentation"
+    }
+  ],
+
+  "excludePatterns": [
+    "README.md",
+    "_*.md",
+    "*.draft.md",
+    "node_modules/**"
+  ]
+}
+

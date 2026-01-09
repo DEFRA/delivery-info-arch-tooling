@@ -1,0 +1,203 @@
+#!/usr/bin/env node
+
+/**
+ * CLI for exporting LikeC4 diagrams
+ * @module @defra/delivery-info-arch-tooling/bin/export-diagrams
+ */
+
+const { execSync } = require('child_process')
+const fs = require('fs')
+const path = require('path')
+
+// Parse arguments
+const args = process.argv.slice(2)
+
+const options = {
+  sourceDir: 'architecture',
+  outputDir: 'generated/diagrams',
+  format: 'png',
+  views: [], // Specific view IDs to export
+  pattern: null // Pattern to match view IDs (e.g., "btms*")
+}
+
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i]
+  switch (arg) {
+    case '--source':
+    case '-s':
+      options.sourceDir = args[++i]
+      break
+    case '--output':
+    case '-o':
+      options.outputDir = args[++i]
+      break
+    case '--format':
+    case '-f':
+      options.format = args[++i]
+      break
+    case '--view':
+    case '-v':
+      options.views.push(args[++i])
+      break
+    case '--pattern':
+    case '-p':
+      options.pattern = args[++i]
+      break
+    case '--help':
+    case '-h':
+      console.log(`
+Usage: export-diagrams [OPTIONS]
+
+Options:
+  --source, -s DIR      Source directory with .c4 files (default: architecture)
+  --output, -o DIR      Output directory for images (default: generated/diagrams)
+  --format, -f FORMAT   Output format: png or svg (default: png)
+  --view, -v VIEW_ID    Export specific view(s) by ID (can use multiple times)
+  --pattern, -p PATTERN Export views matching pattern (e.g., "btms*", "*Context*")
+  --help, -h            Show this help message
+
+Examples:
+  # Export all diagrams
+  export-diagrams
+
+  # Export specific views
+  export-diagrams --view btmsContext --view ipaffsContext
+
+  # Export views matching a pattern
+  export-diagrams --pattern "btms*"
+  export-diagrams --pattern "*Context*"
+
+  # Export to custom directory
+  export-diagrams --output build/diagrams --format svg
+`)
+      process.exit(0)
+    default:
+      // Check if it's a positional argument (view ID)
+      if (!arg.startsWith('-')) {
+        options.views.push(arg)
+      }
+  }
+}
+
+/**
+ * Convert glob pattern to regex
+ */
+function patternToRegex(pattern) {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*')
+    .replace(/\?/g, '.')
+  return new RegExp(`^${escaped}$`, 'i')
+}
+
+/**
+ * Get all view IDs from LikeC4 workspace
+ */
+function getAvailableViews(sourceDir) {
+  try {
+    // Use likec4 CLI to list views (JSON output)
+    const result = execSync(`npx likec4 codegen views-data "${sourceDir}" --outfile /dev/stdout 2>/dev/null`, {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    })
+    
+    // Parse the output to extract view IDs
+    const viewIdRegex = /["']([a-zA-Z0-9_]+)["']\s*:/g
+    const viewIds = new Set()
+    let match
+    while ((match = viewIdRegex.exec(result)) !== null) {
+      viewIds.add(match[1])
+    }
+    return Array.from(viewIds)
+  } catch (error) {
+    // Fallback: scan .c4 files for view definitions
+    console.warn('  Could not get views from likec4 CLI, scanning files...')
+    return scanViewsFromFiles(sourceDir)
+  }
+}
+
+/**
+ * Scan .c4 files for view definitions
+ */
+function scanViewsFromFiles(dir, views = []) {
+  if (!fs.existsSync(dir)) return views
+  
+  const files = fs.readdirSync(dir)
+  for (const file of files) {
+    const filePath = path.join(dir, file)
+    const stat = fs.statSync(filePath)
+    
+    if (stat.isDirectory() && !file.startsWith('.') && file !== 'node_modules') {
+      scanViewsFromFiles(filePath, views)
+    } else if (file.endsWith('.c4')) {
+      const content = fs.readFileSync(filePath, 'utf-8')
+      // Match view definitions: views { viewName of ... } or view viewName { ... }
+      const viewRegex = /(?:views\s*\{[^}]*\b(\w+)\s+of\b|view\s+(\w+)\s*(?:of|\{))/g
+      let match
+      while ((match = viewRegex.exec(content)) !== null) {
+        const viewId = match[1] || match[2]
+        if (viewId && !views.includes(viewId)) {
+          views.push(viewId)
+        }
+      }
+    }
+  }
+  return views
+}
+
+async function main () {
+  console.log(`Exporting LikeC4 diagrams...`)
+  console.log(`  Source: ${options.sourceDir}`)
+  console.log(`  Output: ${options.outputDir}`)
+  console.log(`  Format: ${options.format}`)
+  
+  // Ensure output directory exists
+  if (!fs.existsSync(options.outputDir)) {
+    fs.mkdirSync(options.outputDir, { recursive: true })
+  }
+
+  // Determine which views to export
+  let viewsToExport = options.views.slice()
+  
+  if (options.pattern) {
+    console.log(`  Pattern: ${options.pattern}`)
+  }
+  
+  // Remove duplicates
+  viewsToExport = [...new Set(viewsToExport)]
+  
+  if (viewsToExport.length > 0) {
+    console.log(`  Views: ${viewsToExport.join(', ')}`)
+  } else if (options.pattern) {
+    console.log(`  Filter: ${options.pattern}`)
+  } else {
+    console.log(`  Views: ALL`)
+  }
+  console.log('')
+
+  try {
+    // Build command with filters
+    let cmd = `npx likec4 export ${options.format} "${options.sourceDir}" -o "${options.outputDir}"`
+    
+    if (viewsToExport.length > 0) {
+      // Add filter flags for each view/pattern
+      for (const viewId of viewsToExport) {
+        cmd += ` -f "${viewId}"`
+      }
+    }
+    
+    if (options.pattern && viewsToExport.length === 0) {
+      // Use pattern directly as filter
+      cmd += ` -f "${options.pattern}"`
+    }
+    
+    execSync(cmd, { stdio: 'inherit' })
+    console.log('\n✅ Diagrams exported successfully')
+  } catch (error) {
+    console.error('\n❌ Failed to export diagrams:', error.message)
+    process.exit(1)
+  }
+}
+
+main().catch(console.error)
+

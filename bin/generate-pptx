@@ -1,0 +1,13 @@
+#!/usr/bin/env node
+
+/**
+ * CLI for generating PowerPoint presentations from markdown
+ * @module @defra/delivery-info-arch-tooling/bin/generate-pptx
+ */
+
+const path = require('path')
+
+// Import and run the generate script
+const generateScript = path.join(__dirname, '..', 'lib', 'ppt', 'generate.js')
+require(generateScript)
+

@@ -1,0 +1,107 @@
+#!/usr/bin/env node
+
+/**
+ * CLI for exporting markdown to PDF
+ * @module @defra/delivery-info-arch-tooling/bin/export-pdf
+ */
+
+const fs = require('fs')
+const path = require('path')
+const { glob } = require('glob')
+
+// Default patterns
+const DEFAULT_PATTERNS = [
+  'architecture/**/analysis/**/*.md',
+  'architecture/roadmap/**/analysis/**/*.md'
+]
+
+// Parse arguments
+const args = process.argv.slice(2)
+
+async function main () {
+  let files
+
+  if (args.length > 0 && !args[0].startsWith('-')) {
+    files = args.filter(a => !a.startsWith('-'))
+  } else {
+    const allFiles = []
+    for (const pattern of DEFAULT_PATTERNS) {
+      const matches = await glob(pattern, { cwd: process.cwd() })
+      allFiles.push(...matches)
+    }
+    files = allFiles
+  }
+
+  if (files.length === 0) {
+    console.log('No markdown files found to export')
+    return
+  }
+
+  console.log(`Exporting ${files.length} file(s) to PDF...`)
+
+  // Import PDF library
+  let markdownpdf
+  try {
+    markdownpdf = require('markdown-pdf')
+  } catch (e) {
+    console.error('Error: markdown-pdf package is required')
+    console.error('Install with: npm install markdown-pdf')
+    process.exit(1)
+  }
+
+  const options = {
+    remarkable: {
+      html: true,
+      breaks: true
+    }
+  }
+
+  // Find CSS file if available
+  const cssPath = path.join(__dirname, '..', 'lib', 'pdf', 'pdf-styles.css')
+  if (fs.existsSync(cssPath)) {
+    options.cssPath = cssPath
+  }
+
+  // Create output directory
+  const pdfOutputDir = path.join(process.cwd(), 'generated', 'pdf')
+  if (!fs.existsSync(pdfOutputDir)) {
+    fs.mkdirSync(pdfOutputDir, { recursive: true })
+  }
+
+  for (const file of files) {
+    const inputPath = path.resolve(file)
+
+    if (!fs.existsSync(inputPath)) {
+      console.error(`❌ File not found: ${file}`)
+      continue
+    }
+
+    const relativePath = path.relative(process.cwd(), inputPath)
+    const outputPath = path.join(pdfOutputDir, relativePath.replace(/\.md$/, '.pdf'))
+
+    const outputDir = path.dirname(outputPath)
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true })
+    }
+
+    try {
+      await new Promise((resolve, reject) => {
+        markdownpdf(options)
+          .from(inputPath)
+          .to(outputPath, (err) => {
+            if (err) reject(err)
+            else resolve()
+          })
+      })
+
+      console.log(`✅ ${file} → ${path.relative(process.cwd(), outputPath)}`)
+    } catch (error) {
+      console.error(`❌ Failed to export ${file}:`, error.message)
+    }
+  }
+
+  console.log('\nDone!')
+}
+
+main().catch(console.error)
+

@@ -1,0 +1,41 @@
+{
+  "name": "@defra/your-vertical-documentation",
+  "version": "1.0.0",
+  "description": "Documentation for your Defra vertical",
+  "private": true,
+  "scripts": {
+    "dev": "cd astro && npm run dev",
+    "build": "cd astro && npm run build",
+    "build:diagrams": "export-diagrams",
+    "build:mermaid": "node node_modules/@defra/delivery-info-arch-tooling/lib/diagrams/convert-mmd.js",
+    "build:mermaid-from-likec4": "node node_modules/@defra/delivery-info-arch-tooling/lib/diagrams/convert-likec4-to-mermaid.js",
+    "publish:confluence": "publish-to-confluence --config scripts/confluence-config.json",
+    "publish:confluence:space": "publish-to-confluence --config scripts/confluence-config.json --space",
+    "generate:pptx": "generate-pptx",
+    "export:pdf": "export-pdf",
+    "validate:c4": "likec4 validate",
+    "test": "jest",
+    "lint": "neostandard",
+    "lint:fix": "neostandard --fix"
+  },
+  "dependencies": {
+    "@defra/delivery-info-arch-tooling": "^1.0.0"
+  },
+  "devDependencies": {
+    "likec4": "^1.47.0",
+    "jest": "^29.7.0",
+    "neostandard": "^0.12.2"
+  },
+  "keywords": [
+    "defra",
+    "architecture",
+    "documentation"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DEFRA/your-vertical-documentation.git"
+  },
+  "author": "Defra",
+  "license": "OGL-UK-3.0"
+}
+

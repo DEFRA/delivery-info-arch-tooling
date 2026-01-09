@@ -1,0 +1,56 @@
+{
+    "name": "@defra/delivery-info-arch-tooling",
+    "version": "1.0.0",
+    "description": "Shared tooling for generating documentation (Confluence, PPT, PDF) across Defra verticals",
+    "main": "lib/index.js",
+    "bin": {
+        "publish-to-confluence": "./bin/publish-to-confluence",
+        "generate-pptx": "./bin/generate-pptx",
+        "export-pdf": "./bin/export-pdf",
+        "export-diagrams": "./bin/export-diagrams"
+    },
+    "scripts": {
+        "test": "jest",
+        "test:confluence": "jest test/confluence",
+        "test:ppt": "jest test/ppt",
+        "test:pdf": "jest test/pdf",
+        "test:watch": "jest --watch",
+        "test:coverage": "jest --coverage",
+        "lint": "neostandard",
+        "lint:fix": "neostandard --fix",
+        "prepare": "husky || true"
+    },
+    "dependencies": {
+        "form-data": "^4.0.0",
+        "glob": "^11.0.0",
+        "@mermaid-js/mermaid-cli": "^11.4.0",
+        "markdown-pdf": "^11.0.0"
+    },
+    "peerDependencies": {
+        "likec4": "^1.47.0"
+    },
+    "devDependencies": {
+        "jest": "^29.7.0",
+        "neostandard": "^0.12.2",
+        "husky": "^9.0.0"
+    },
+    "keywords": [
+        "defra",
+        "architecture",
+        "documentation",
+        "confluence",
+        "pptx",
+        "pdf",
+        "likec4",
+        "mermaid"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/DEFRA/delivery-info-arch-tooling.git"
+    },
+    "author": "Defra",
+    "license": "OGL-UK-3.0",
+    "engines": {
+        "node": ">=18.0.0"
+    }
+}

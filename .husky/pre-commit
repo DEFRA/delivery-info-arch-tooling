@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Run tests before commit (only if test files or library files are staged)
+if git diff --cached --name-only | grep -qE '(test/|lib/)'; then
+  echo "Running tests..."
+  npm test
+fi
+
+# Run linting for JavaScript files (only if JS files are staged)
+if git diff --cached --name-only | grep -qE '\.(js|mjs|cjs)$'; then
+  echo "Linting JavaScript files..."
+  npm run lint
+fi
