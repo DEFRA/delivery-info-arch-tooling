@@ -290,6 +290,8 @@ cp -r node_modules/@defra/delivery-info-arch-tooling/templates ./templates
 
 ### PDF Export
 
+- **Modern PDF generation**: Uses `md-to-pdf` with Puppeteer (headless Chrome) for reliable, high-quality PDFs
+- **Node.js 22+ compatible**: Works with modern Node.js versions
 - **Styled output**: Configurable CSS styling
 - **Batch processing**: Export multiple files at once
 - **Directory preservation**: Maintains folder structure in output
@@ -302,11 +304,12 @@ cp -r node_modules/@defra/delivery-info-arch-tooling/templates ./templates
 
 ## Requirements
 
-- Node.js 18+
+- **Node.js 22+** (required for LikeC4 1.47.0+ and modern PDF generation)
 - For PPT generation: Marp CLI (automatically uses `npx @marp-team/marp-cli` if not globally installed)
 - For editable PPTX: LibreOffice Impress (required for `--editable` flag)
-- For diagrams: LikeC4 (`npm install likec4` as peer dependency)
+- For diagrams: LikeC4 (`npm install likec4` as peer dependency, requires Node.js 22.21.1+)
 - For Mermaid: `@mermaid-js/mermaid-cli` (bundled in tooling package)
+- For PDF generation: `md-to-pdf` (bundled in tooling package, uses Puppeteer which requires Chromium)
 
 ## License
 
