@@ -10,20 +10,16 @@ const { export: exportToPdf, exportMultiple } = require('../../lib/pdf/index')
 jest.mock('fs', () => ({
   existsSync: jest.fn(),
   mkdirSync: jest.fn(),
-  readFileSync: jest.fn()
+  readFileSync: jest.fn(),
+  writeFileSync: jest.fn()
 }))
 
-jest.mock('markdown-pdf', () => {
-  return jest.fn((options) => {
-    const mockInstance = {
-      from: jest.fn().mockReturnThis(),
-      to: jest.fn((outputPath, callback) => {
-        // Simulate successful conversion
-        setTimeout(() => callback(null), 10)
-        return mockInstance
-      })
+jest.mock('md-to-pdf', () => {
+  return jest.fn(async (input, options) => {
+    // Simulate successful PDF generation
+    return {
+      content: Buffer.from('mock-pdf-content')
     }
-    return mockInstance
   })
 })
 
@@ -31,17 +27,11 @@ describe('pdf/index', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     fs.existsSync.mockReturnValue(true)
-    // Reset markdown-pdf mock
-    const markdownpdf = require('markdown-pdf')
-    markdownpdf.mockImplementation((options) => {
-      const mockInstance = {
-        from: jest.fn().mockReturnThis(),
-        to: jest.fn((outputPath, callback) => {
-          setTimeout(() => callback(null), 10)
-          return mockInstance
-        })
-      }
-      return mockInstance
+    fs.writeFileSync = jest.fn()
+    // Reset md-to-pdf mock
+    const mdToPdf = require('md-to-pdf')
+    mdToPdf.mockResolvedValue({
+      content: Buffer.from('mock-pdf-content')
     })
   })
 
@@ -58,12 +48,13 @@ describe('pdf/index', () => {
 
     it('should generate PDF with default output directory', async () => {
       const inputFile = 'docs/test.md'
-      const markdownpdf = require('markdown-pdf')
+      const mdToPdf = require('md-to-pdf')
 
       const result = await exportToPdf({ inputFile })
 
       expect(fs.existsSync).toHaveBeenCalledWith(path.resolve(inputFile))
-      expect(markdownpdf).toHaveBeenCalled()
+      expect(mdToPdf).toHaveBeenCalled()
+      expect(fs.writeFileSync).toHaveBeenCalled()
       expect(result).toContain('generated/pdf')
       expect(result).toContain('test.pdf')
     })
@@ -95,38 +86,33 @@ describe('pdf/index', () => {
     it('should use custom CSS if provided', async () => {
       const inputFile = 'docs/test.md'
       const cssPath = 'styles/custom.css'
-      fs.existsSync.mockImplementation((path) => {
-        if (path === cssPath) return true
+      fs.existsSync.mockImplementation((filePath) => {
+        if (filePath === cssPath) return true
         return true
       })
 
       await exportToPdf({ inputFile, cssPath })
 
-      const markdownpdf = require('markdown-pdf')
-      const callArgs = markdownpdf.mock.calls[0][0]
-      expect(callArgs.cssPath).toBe(cssPath)
+      const mdToPdf = require('md-to-pdf')
+      const callArgs = mdToPdf.mock.calls[0][1] // Second argument is options
+      expect(callArgs.stylesheet).toContain(cssPath)
     })
 
-    it('should throw error if markdown-pdf is not available', async () => {
-      // This test verifies the error message when markdown-pdf is missing
-      // Since we're mocking markdown-pdf, we can't easily test this without
+    it('should throw error if md-to-pdf is not available', async () => {
+      // This test verifies the error message when md-to-pdf is missing
+      // Since we're mocking md-to-pdf, we can't easily test this without
       // complex module manipulation. The error handling is tested via integration tests.
       // Skipping this unit test as it requires module system manipulation
       expect(true).toBe(true)
     })
 
     it('should handle conversion errors', async () => {
-      const markdownpdf = require('markdown-pdf')
+      const mdToPdf = require('md-to-pdf')
       const mockError = new Error('Conversion failed')
       // Reset the mock and create a new one that fails
       jest.clearAllMocks()
-      const failingMock = jest.fn(() => ({
-        from: jest.fn().mockReturnThis(),
-        to: jest.fn((outputPath, callback) => {
-          setTimeout(() => callback(mockError), 10)
-        })
-      }))
-      markdownpdf.mockImplementation(failingMock)
+      fs.existsSync.mockReturnValue(true)
+      mdToPdf.mockRejectedValue(mockError)
 
       await expect(exportToPdf({ inputFile: 'test.md' })).rejects.toThrow('Conversion failed')
     })

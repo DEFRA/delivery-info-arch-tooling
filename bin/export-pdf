@@ -40,27 +40,19 @@ async function main () {
   console.log(`Exporting ${files.length} file(s) to PDF...`)
 
   // Import PDF library
-  let markdownpdf
+  let mdToPdf
   try {
-    markdownpdf = require('markdown-pdf')
+    const mdToPdfModule = require('md-to-pdf')
+    mdToPdf = mdToPdfModule.mdToPdf || mdToPdfModule.default || mdToPdfModule
   } catch (e) {
-    console.error('Error: markdown-pdf package is required')
-    console.error('Install with: npm install markdown-pdf')
+    console.error('Error: md-to-pdf package is required')
+    console.error('Install with: npm install md-to-pdf')
     process.exit(1)
-  }
-
-  const options = {
-    remarkable: {
-      html: true,
-      breaks: true
-    }
   }
 
   // Find CSS file if available
   const cssPath = path.join(__dirname, '..', 'lib', 'pdf', 'pdf-styles.css')
-  if (fs.existsSync(cssPath)) {
-    options.cssPath = cssPath
-  }
+  const stylesheet = fs.existsSync(cssPath) ? [cssPath] : []
 
   // Create output directory
   const pdfOutputDir = path.join(process.cwd(), 'generated', 'pdf')
@@ -85,16 +77,35 @@ async function main () {
     }
 
     try {
-      await new Promise((resolve, reject) => {
-        markdownpdf(options)
-          .from(inputPath)
-          .to(outputPath, (err) => {
-            if (err) reject(err)
-            else resolve()
-          })
-      })
+      // Configure PDF options
+      const pdfOptions = {
+        pdf_options: {
+          format: 'A4',
+          printBackground: true,
+          margin: {
+            top: '20mm',
+            right: '15mm',
+            bottom: '20mm',
+            left: '15mm'
+          }
+        },
+        stylesheet: stylesheet,
+        body_class: 'markdown-body',
+        marked_options: {
+          breaks: true,
+          gfm: true
+        }
+      }
 
-      console.log(`✅ ${file} → ${path.relative(process.cwd(), outputPath)}`)
+      // Generate PDF
+      const pdf = await mdToPdf({ path: inputPath }, pdfOptions)
+
+      if (pdf) {
+        fs.writeFileSync(outputPath, pdf.content)
+        console.log(`✅ ${file} → ${path.relative(process.cwd(), outputPath)}`)
+      } else {
+        throw new Error('PDF generation returned null')
+      }
     } catch (error) {
       console.error(`❌ Failed to export ${file}:`, error.message)
     }
