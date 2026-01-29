@@ -18,16 +18,20 @@ npm install github:DEFRA/delivery-info-arch-tooling
 
 ### Publishing to Confluence
 
+**Diagram images are not re-generated on publish.** The publisher uses whatever PNGs already exist in `generated/diagrams/`. If you have updated your C4 (LikeC4) or Mermaid (`.mmd`) source files, run the diagram build **before** publishing so Confluence gets the updated images:
+
 ```bash
+# After updating .c4 or .mmd source files, regenerate diagram images first:
+npm run build:diagrams   # LikeC4 → PNG
+npm run build:mmd        # Mermaid → PNG (if you use Mermaid diagrams)
+
 # Set credentials as environment variables
 export CONFLUENCE_USERNAME="your-email@defra.gov.uk"
 export CONFLUENCE_API_TOKEN="your-api-token"
 
-# Publish all configured content
+# Then publish
 npm run publish:confluence
-
-# Publish only a specific space
-npm run publish:confluence:space BTMS
+npm run publish:confluence:space BTMS   # or a specific space
 ```
 
 ### Generating PowerPoint
@@ -254,7 +258,7 @@ Options:
 - **Space filtering**: Publish to specific spaces via `--space` option
 - **Generated page protection**: Only updates pages with "generated" label
 - **Conditional content**: Supports PPT_ONLY, NOT_PPT, CONFLUENCE_ONLY, GITHUB_ONLY tags
-- **Automatic diagram generation**: Exports missing LikeC4 diagrams automatically
+- **Diagram images**: Uses existing PNGs in `generated/diagrams/` — it does **not** re-export when you change C4 or Mermaid source. Run `npm run build:diagrams` (and `npm run build:mmd` for Mermaid) after updating diagrams, then publish. Missing images are exported on demand during publish.
 
 ### PowerPoint Generation
 
