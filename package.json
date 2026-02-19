@@ -27,7 +27,7 @@
         "md-to-pdf": "^5.2.5"
     },
     "peerDependencies": {
-        "likec4": "^1.48.0"
+        "likec4": "^1.49.0"
     },
     "devDependencies": {
         "husky": "^9.0.0",
