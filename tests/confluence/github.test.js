@@ -42,7 +42,7 @@ describe('github', () => {
       })
 
       const result = getGitHubSourceUrl('/repo/root/docs/file.md')
-      expect(result).toBe('https://github.com/defra/test-repo/docs/file.md')
+      expect(result).toBe('https://github.com/defra/test-repo/blob/main/docs/file.md')
     })
 
     it('should extract repo from git remote URL (SSH format)', () => {
@@ -57,7 +57,7 @@ describe('github', () => {
       })
 
       const result = getGitHubSourceUrl('/repo/root/docs/file.md')
-      expect(result).toBe('https://github.com/defra/test-repo/docs/file.md')
+      expect(result).toBe('https://github.com/defra/test-repo/blob/main/docs/file.md')
     })
 
     it('should extract repo from git remote URL (HTTPS format)', () => {
@@ -72,7 +72,7 @@ describe('github', () => {
       })
 
       const result = getGitHubSourceUrl('/repo/root/docs/file.md')
-      expect(result).toBe('https://github.com/defra/test-repo/docs/file.md')
+      expect(result).toBe('https://github.com/defra/test-repo/blob/main/docs/file.md')
     })
 
     it('should handle relative paths correctly', () => {
@@ -85,7 +85,35 @@ describe('github', () => {
       })
 
       const result = getGitHubSourceUrl('/repo/root/docs/subdir/file.md')
-      expect(result).toBe('https://github.com/defra/test-repo/docs/subdir/file.md')
+      expect(result).toBe('https://github.com/defra/test-repo/blob/main/docs/subdir/file.md')
+    })
+
+    it('should use GITHUB_REF_NAME or GITHUB_BRANCH when set', () => {
+      process.env.GITHUB_REPOSITORY = 'defra/test-repo'
+      process.env.GITHUB_REF_NAME = 'develop'
+      execSync.mockImplementation((command) => {
+        if (command.includes('rev-parse --show-toplevel')) {
+          return '/repo/root'
+        }
+        return ''
+      })
+
+      const result = getGitHubSourceUrl('/repo/root/docs/file.md')
+      expect(result).toBe('https://github.com/defra/test-repo/blob/develop/docs/file.md')
+      delete process.env.GITHUB_REF_NAME
+    })
+
+    it('should use tree/main/ for directory paths when isDirectory is true', () => {
+      process.env.GITHUB_REPOSITORY = 'DEFRA/trade-imports-documentation'
+      execSync.mockImplementation((command) => {
+        if (command.includes('rev-parse --show-toplevel')) {
+          return '/repo/root'
+        }
+        return ''
+      })
+
+      const result = getGitHubSourceUrl('/repo/root/docs/systems/EUDP/Delivery Passport/Technology View/Analysis', true)
+      expect(result).toBe('https://github.com/DEFRA/trade-imports-documentation/tree/main/docs/systems/EUDP/Delivery%20Passport/Technology%20View/Analysis')
     })
 
     it('should handle absolute paths outside repo root', () => {

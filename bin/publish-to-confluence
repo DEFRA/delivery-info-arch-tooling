@@ -181,8 +181,11 @@ async function main() {
     console.log(`   Space filter: ${options.space || 'ALL'}`)
     console.log('')
 
-    // Determine parent page ID
-    const parentPageId = options.parentPageId || process.env.PARENT_PAGE_ID || config.parentPageId || null
+    // Determine parent page ID (must be numeric; placeholders like INJECTED_FROM_VARIABLE → null so folders can be created at space root)
+    const rawParentId = options.parentPageId || process.env.CONFLUENCE_PARENT_PAGE_ID || process.env.PARENT_PAGE_ID || config.parentPageId || null
+    const parentPageId = (rawParentId != null && String(rawParentId).trim() !== '' && !/^INJECTED|^OPTIONAL/i.test(String(rawParentId)))
+        ? (Number.isInteger(Number(rawParentId)) ? String(Number(rawParentId)) : null)
+        : null
 
     // Use the library's publish function to actually publish
     console.log('📝 Publishing configured paths from confluence-config.json...')
@@ -194,7 +197,7 @@ async function main() {
     const result = await confluenceLib.publish({
         configPath: options.configPath,
         spaceFilter: options.space,
-        parentPageId: options.parentPageId || process.env.PARENT_PAGE_ID || config.parentPageId || null,
+        parentPageId,
         auth,
         contentRoot: CONFIG.contentRoot,
         confluenceUrl: CONFIG.confluenceUrl
