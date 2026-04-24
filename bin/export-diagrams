@@ -17,7 +17,8 @@ const options = {
   outputDir: 'generated/diagrams',
   format: 'png',
   views: [], // Specific view IDs to export
-  pattern: null // Pattern to match view IDs (e.g., "btms*")
+  pattern: null, // Pattern to match view IDs (e.g., "btms*")
+  sequence: false // Use sequence layout for dynamic views
 }
 
 for (let i = 0; i < args.length; i++) {
@@ -43,6 +44,10 @@ for (let i = 0; i < args.length; i++) {
     case '-p':
       options.pattern = args[++i]
       break
+    case '--seq':
+    case '--sequence':
+      options.sequence = true
+      break
     case '--help':
     case '-h':
       console.log(`
@@ -54,6 +59,7 @@ Options:
   --format, -f FORMAT   Output format: png or svg (default: png)
   --view, -v VIEW_ID    Export specific view(s) by ID (can use multiple times)
   --pattern, -p PATTERN Export views matching pattern (e.g., "btms*", "*Context*")
+  --seq, --sequence     Use sequence layout for dynamic views
   --help, -h            Show this help message
 
 Examples:
@@ -66,6 +72,9 @@ Examples:
   # Export views matching a pattern
   export-diagrams --pattern "btms*"
   export-diagrams --pattern "*Context*"
+
+  # Export dynamic views as sequence diagrams
+  export-diagrams --view iuuEuStandaloneFlow --seq
 
   # Export to custom directory
   export-diagrams --output build/diagrams --format svg
@@ -150,6 +159,9 @@ async function main () {
   console.log(`  Source: ${options.sourceDir}`)
   console.log(`  Output: ${options.outputDir}`)
   console.log(`  Format: ${options.format}`)
+  if (options.sequence) {
+    console.log(`  Layout: sequence (dynamic views only)`)
+  }
   
   // Ensure output directory exists
   if (!fs.existsSync(options.outputDir)) {
@@ -189,6 +201,10 @@ async function main () {
     if (options.pattern && viewsToExport.length === 0) {
       // Use pattern directly as filter
       cmd += ` -f "${options.pattern}"`
+    }
+
+    if (options.sequence) {
+      cmd += ' --seq'
     }
     
     execSync(cmd, { stdio: 'inherit' })

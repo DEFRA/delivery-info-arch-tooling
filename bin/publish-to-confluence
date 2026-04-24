@@ -39,6 +39,7 @@ function parseArgs() {
         username: null,
         apiToken: null,
         configPath: null,
+        file: null,
         help: false
     }
 
@@ -64,6 +65,10 @@ function parseArgs() {
             case '--config':
             case '-c':
                 options.configPath = args[++i]
+                break
+            case '--file':
+            case '-f':
+                options.file = args[++i]
                 break
             case '--help':
             case '-h':
@@ -91,6 +96,7 @@ Usage: publish-to-confluence [OPTIONS]
 
 Options:
   --space, -s SPACE_KEY          Filter: only publish files targeting this space
+  --file, -f FILE_PATH           Publish a single file (relative to content root or absolute)
   --parent-page-id, -p PAGE_ID   Parent page ID
   --username, -u USERNAME        Confluence username/email
   --api-token, -t TOKEN          Confluence API token
@@ -103,8 +109,15 @@ Environment Variables:
   CONFLUENCE_API_TOKEN           Confluence API token
   CONFLUENCE_SPACE               Default space key
 
-Example:
+Examples:
+  # Publish all pages
+  publish-to-confluence --config ./confluence-config.json
+
+  # Publish all pages in a space
   publish-to-confluence --space TIDIA --config ./confluence-config.json
+
+  # Publish a single page
+  publish-to-confluence --file "docs/systems/EUDP/Explorations/Exploration - IUU/Technical options - IUU.md" --config ./confluence-config.json
 `)
 }
 
@@ -179,6 +192,9 @@ async function main() {
     console.log(`   Content root: ${CONFIG.contentRoot}`)
     console.log(`   Confluence URL: ${CONFIG.confluenceUrl}`)
     console.log(`   Space filter: ${options.space || 'ALL'}`)
+    if (options.file) {
+        console.log(`   File filter: ${options.file}`)
+    }
     console.log('')
 
     // Determine parent page ID (must be numeric; placeholders like INJECTED_FROM_VARIABLE → null so folders can be created at space root)
@@ -197,6 +213,7 @@ async function main() {
     const result = await confluenceLib.publish({
         configPath: options.configPath,
         spaceFilter: options.space,
+        fileFilter: options.file,
         parentPageId,
         auth,
         contentRoot: CONFIG.contentRoot,
