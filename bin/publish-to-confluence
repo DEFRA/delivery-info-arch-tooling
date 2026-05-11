@@ -18,7 +18,8 @@ const CONFIG = {
     confluenceUrl: process.env.CONFLUENCE_URL || 'https://eaflood.atlassian.net',
     defaultSpace: process.env.CONFLUENCE_SPACE || '',
     generatedLabel: process.env.GENERATED_LABEL || 'generated',
-    contentRoot: null
+    contentRoot: null,
+    dryRun: false
 }
 
 // Statistics
@@ -169,6 +170,7 @@ async function main() {
 
     const auth = validateConfig(options)
     const config = await loadConfig(options.configPath)
+    CONFIG.dryRun = Boolean(config.options?.dryRun)
 
     // Initialize module configurations
     apiClient.setConfig(CONFIG)
@@ -192,6 +194,7 @@ async function main() {
     console.log(`   Content root: ${CONFIG.contentRoot}`)
     console.log(`   Confluence URL: ${CONFIG.confluenceUrl}`)
     console.log(`   Space filter: ${options.space || 'ALL'}`)
+    console.log(`   Dry run: ${CONFIG.dryRun ? 'ON' : 'OFF'}`)
     if (options.file) {
         console.log(`   File filter: ${options.file}`)
     }
@@ -217,7 +220,8 @@ async function main() {
         parentPageId,
         auth,
         contentRoot: CONFIG.contentRoot,
-        confluenceUrl: CONFIG.confluenceUrl
+        confluenceUrl: CONFIG.confluenceUrl,
+        dryRun: CONFIG.dryRun
     })
 
     stats.success = result.success
@@ -242,4 +246,3 @@ main().catch((error) => {
     console.error('❌ Fatal error:', error)
     process.exit(1)
 })
-

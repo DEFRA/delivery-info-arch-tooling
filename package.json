@@ -21,6 +21,7 @@
         "prepare": "husky || true"
     },
     "dependencies": {
+        "@defra/delivery-info-arch-tooling": "github:DEFRA/delivery-info-arch-tooling",
         "@mermaid-js/mermaid-cli": "^11.12.0",
         "form-data": "^4.0.0",
         "glob": "^11.0.0",

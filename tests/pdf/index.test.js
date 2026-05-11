@@ -55,7 +55,7 @@ describe('pdf/index', () => {
       expect(fs.existsSync).toHaveBeenCalledWith(path.resolve(inputFile))
       expect(mdToPdf).toHaveBeenCalled()
       expect(fs.writeFileSync).toHaveBeenCalled()
-      expect(result).toContain('generated/pdf')
+      expect(result).toContain(path.join('generated', 'pdf'))
       expect(result).toContain('test.pdf')
     })
 
@@ -65,7 +65,7 @@ describe('pdf/index', () => {
 
       const result = await exportToPdf({ inputFile, outputDir })
 
-      expect(result).toContain(outputDir)
+      expect(result).toContain(path.join('custom', 'output'))
       expect(result).toContain('test.pdf')
     })
 
@@ -156,7 +156,7 @@ describe('pdf/index', () => {
 
       expect(result.success.length).toBeGreaterThan(0)
       if (result.success.length > 0) {
-        expect(result.success[0]).toContain('generated/pdf')
+        expect(result.success[0]).toContain(path.join('generated', 'pdf'))
       }
     })
 
@@ -169,7 +169,7 @@ describe('pdf/index', () => {
 
       expect(result.success.length).toBeGreaterThan(0)
       if (result.success.length > 0) {
-        expect(result.success[0]).toContain(outputDir)
+        expect(result.success[0]).toContain(path.join('custom', 'output'))
       }
     })
   })
