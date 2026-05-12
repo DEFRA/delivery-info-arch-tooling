@@ -21,7 +21,7 @@ const {
 describe('page-manager', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    setConfig({ generatedLabel: 'generated' })
+    setConfig({ generatedLabel: 'generated', dryRun: false })
   })
 
   describe('setConfig', () => {
@@ -310,6 +310,22 @@ describe('page-manager', () => {
 
       expect(result).toBe(false)
     })
+
+    it('should not add label during dry run', async () => {
+      setConfig({ generatedLabel: 'generated', dryRun: true })
+      confluenceRequest.mockResolvedValueOnce({
+        status: 200,
+        body: { results: [] }
+      })
+
+      const result = await addLabelToPage('page123', 'generated', {
+        username: 'user',
+        apiToken: 'token'
+      })
+
+      expect(result).toBe(true)
+      expect(confluenceRequest).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('handlePageStatus', () => {
@@ -359,6 +375,30 @@ describe('page-manager', () => {
         '/content/page123?permanent=true',
         expect.any(Object)
       )
+    })
+
+    it('should not restore archived pages during dry run', async () => {
+      setConfig({ generatedLabel: 'generated', dryRun: true })
+
+      const result = await handlePageStatus('page123', 'archived', 'Test Page', {
+        username: 'user',
+        apiToken: 'token'
+      })
+
+      expect(result).toEqual({ usable: true, pageId: 'page123', title: 'Test Page' })
+      expect(confluenceRequest).not.toHaveBeenCalled()
+    })
+
+    it('should not delete trashed pages during dry run', async () => {
+      setConfig({ generatedLabel: 'generated', dryRun: true })
+
+      const result = await handlePageStatus('page123', 'trashed', 'Test Page', {
+        username: 'user',
+        apiToken: 'token'
+      })
+
+      expect(result).toEqual({ usable: false, pageId: null, title: 'Test Page [NEW]' })
+      expect(confluenceRequest).not.toHaveBeenCalled()
     })
 
     it('should handle restore failure', async () => {
