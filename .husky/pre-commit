@@ -7,7 +7,7 @@ esac
 if git diff --cached --name-only | grep -qE '(test/|lib/)'; then
   echo "Running tests..."
   "$npm_exec" test
- fi
+fi
 
 # Run linting for JavaScript files (only if JS files are staged) 
 if git diff --cached --name-only | grep -qE '\.(js|mjs|cjs)$'; then
