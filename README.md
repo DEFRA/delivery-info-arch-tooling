@@ -37,7 +37,11 @@ npm run publish:confluence:space BTMS   # or a specific space
 ### Generating PowerPoint
 
 ```bash
-npm run pptx:build "docs/overview.md" -- --title "System Overview"
+# Build only the diagrams referenced by the markdown (after PPT content filters)
+npm run build:ppt:diagrams "docs/overview.md"
+
+# Or build diagrams as part of PPT generation
+npm run pptx:build "docs/overview.md" -- --title "System Overview" --build-diagrams
 ```
 
 ### Exporting PDF
@@ -185,6 +189,7 @@ Options:
   --editable                     Generate editable PPTX (experimental, requires LibreOffice Impress)
   --apply-template               Apply Defra template to generated PPTX (requires python-pptx)
   --template, -t                 Path to template file (default: templates/defra-template.pptx)
+  --build-diagrams               Build only LikeC4/Mermaid images referenced by the input markdown
 ```
 
 **Example npm script**:
@@ -214,6 +219,31 @@ If no files specified, exports all markdown files matching default patterns.
   }
 }
 ```
+
+### build-ppt-diagrams
+
+```
+Usage: build-ppt-diagrams <input.md> [OPTIONS]
+
+Build only the LikeC4 and Mermaid diagram images referenced by a markdown file
+after applying PPT content filters (PPT_ONLY kept, GITHUB_ONLY/CONFLUENCE_ONLY removed).
+
+Options:
+  --source, -s DIR      LikeC4 source directory (default: architecture)
+  --output, -o DIR      PNG output directory (default: generated/diagrams)
+  --format, -f FORMAT   LikeC4 export format: png or svg (default: png)
+```
+
+**Example npm script**:
+```json
+{
+  "scripts": {
+    "build:ppt:diagrams": "build-ppt-diagrams"
+  }
+}
+```
+
+Usage: `npm run build:ppt:diagrams "docs/file.md"`
 
 ### export-diagrams
 
@@ -267,7 +297,8 @@ Options:
 - **Heading-based slides**: Configure which heading level triggers new slides (default: H1)
 - **Theme support**: Customizable themes and styling
 - **Diagram embedding**: Converts LikeC4View components to images
-- **Conditional content**: Supports PPT_ONLY, NOT_PPT, CONFLUENCE_ONLY tags
+- **Conditional content**: Supports PPT_ONLY, PPT_SLIDE, NOT_PPT, CONFLUENCE_ONLY tags
+- **Headerless slide breaks**: `<!-- PPT_SLIDE -->` starts a new slide without H1/H2 section headers (use before diagram slides)
 - **Editable PPTX**: Optional editable output (experimental, requires LibreOffice Impress)
 - **Image path conversion**: Automatically converts absolute paths for PPT compatibility
 

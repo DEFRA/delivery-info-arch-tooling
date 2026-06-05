@@ -7,7 +7,8 @@
         "publish-to-confluence": "./bin/publish-to-confluence",
         "generate-pptx": "./bin/generate-pptx",
         "export-pdf": "./bin/export-pdf",
-        "export-diagrams": "./bin/export-diagrams"
+        "export-diagrams": "./bin/export-diagrams",
+        "build-ppt-diagrams": "./bin/build-ppt-diagrams"
     },
     "scripts": {
         "test": "jest",
@@ -27,7 +28,7 @@
         "md-to-pdf": "^5.2.5"
     },
     "peerDependencies": {
-        "likec4": "^1.56.0"
+        "likec4": "^1.57.0"
     },
     "devDependencies": {
         "husky": "^9.0.0",

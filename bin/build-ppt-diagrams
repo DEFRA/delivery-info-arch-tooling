@@ -1,0 +1,70 @@
+#!/usr/bin/env node
+
+/**
+ * CLI for building only the diagrams referenced by a markdown file for PPT output.
+ * @module @defra/delivery-info-arch-tooling/bin/build-ppt-diagrams
+ */
+
+const { buildPptDiagrams } = require('../lib/ppt/build-diagrams')
+
+const args = process.argv.slice(2)
+const options = {
+  inputFile: null,
+  sourceDir: 'architecture',
+  outputDir: 'generated/diagrams',
+  format: 'png'
+}
+
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i]
+  switch (arg) {
+    case '--source':
+    case '-s':
+      options.sourceDir = args[++i]
+      break
+    case '--output':
+    case '-o':
+      options.outputDir = args[++i]
+      break
+    case '--format':
+    case '-f':
+      options.format = args[++i]
+      break
+    case '--help':
+    case '-h':
+      console.log(`
+Usage: build-ppt-diagrams <input.md> [OPTIONS]
+
+Build only the LikeC4 and Mermaid diagram images referenced by a markdown file
+after applying PPT content filters (PPT_ONLY kept, GITHUB_ONLY/CONFLUENCE_ONLY removed).
+
+Options:
+  --source, -s DIR      LikeC4 source directory (default: architecture)
+  --output, -o DIR      PNG output directory (default: generated/diagrams)
+  --format, -f FORMAT   LikeC4 export format: png or svg (default: png)
+  --help, -h            Show this help message
+
+Examples:
+  build-ppt-diagrams "docs/overview.md"
+  build-ppt-diagrams "docs/systems/EUDP/.../TRACES Integration Solution Overview.md"
+`)
+      process.exit(0)
+    default:
+      if (!arg.startsWith('-') && !options.inputFile) {
+        options.inputFile = arg
+      }
+  }
+}
+
+if (!options.inputFile) {
+  console.error('Usage: build-ppt-diagrams <input.md> [OPTIONS]')
+  console.error('Run build-ppt-diagrams --help for details.')
+  process.exit(1)
+}
+
+try {
+  buildPptDiagrams(options)
+} catch (error) {
+  console.error(`\n❌ ${error.message}`)
+  process.exit(1)
+}
