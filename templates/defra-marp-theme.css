@@ -87,6 +87,7 @@ section.title-slide,
 section.section-slide {
   place-content: safe center center !important;
   align-content: center !important;
+  text-align: center;
 }
 
 p {
