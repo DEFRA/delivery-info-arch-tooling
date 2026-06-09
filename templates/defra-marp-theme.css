@@ -15,25 +15,39 @@ ol li:before {
   counter-increment: item;
 }
 
+h1,
+h2,
+h3 {
+  line-height: 1.15 !important;
+  margin-top: 0 !important;
+}
+
 h1 {
   color: rgb(0, 176, 80);
   font-weight: normal;
   font-size: 36px !important;
-  margin-top: 0;
+  margin-bottom: 6px !important;
 }
 
 h2 {
   color: rgb(0, 176, 80);
   font-weight: normal;
-  margin-top: 0;
   font-size: 30px !important;
+  margin-bottom: 4px !important;
 }
 
 h3 {
   color: rgb(0, 176, 80);
   font-weight: normal;
-  margin-top: 0;
   font-size: 24px !important;
+  margin-bottom: 10px !important;
+}
+
+/* Breadcrumb stacks (H1 + H2 + H3) — collapse gap between consecutive headings */
+h1 + h2,
+h2 + h3,
+h1 + h3 {
+  margin-top: 0 !important;
 }
 
 h4 {
@@ -65,7 +79,7 @@ section {
   /* Override default theme's `place-content: safe center center` (Marp Core v4+) */
   place-content: safe start start !important;
   align-content: start !important;
-  padding: 78.5px;
+  padding: 50px 78.5px 78.5px 78.5px;
 }
 
 /* Title and section-divider slides stay vertically centred */
