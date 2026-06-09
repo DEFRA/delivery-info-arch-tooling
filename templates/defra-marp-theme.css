@@ -19,6 +19,7 @@ h1 {
   color: rgb(0, 176, 80);
   font-weight: normal;
   font-size: 36px !important;
+  margin-top: 0;
 }
 
 h2 {
@@ -60,6 +61,18 @@ section {
   font-family: "Arial", sans-serif;
   font-size: 16px !important;
   line-height: 140%;
+  display: block;
+  /* Override default theme's `place-content: safe center center` (Marp Core v4+) */
+  place-content: safe start start !important;
+  align-content: start !important;
+  padding: 78.5px;
+}
+
+/* Title and section-divider slides stay vertically centred */
+section.title-slide,
+section.section-slide {
+  place-content: safe center center !important;
+  align-content: center !important;
 }
 
 p {
