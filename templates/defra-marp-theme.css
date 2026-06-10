@@ -82,8 +82,14 @@ section {
   padding: 50px 78.5px 78.5px 78.5px;
 }
 
-/* Title and section-divider slides stay vertically centred */
-section.title-slide,
+/* Title slide — left-aligned text, vertically centred */
+section.title-slide {
+  place-content: safe center center !important;
+  align-content: center !important;
+  text-align: left;
+}
+
+/* Section-divider slides stay centred */
 section.section-slide {
   place-content: safe center center !important;
   align-content: center !important;
