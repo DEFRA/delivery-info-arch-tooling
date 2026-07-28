@@ -14,7 +14,41 @@ describe('content-filters', () => {
     })
   })
 
+  describe('filterContentByFormat (ppt)', () => {
+    it('strips titled Astro note blocks such as Delivery dependency', () => {
+      const content = `Before
+
+:::note[Delivery dependency]
+Do not ship this to PPT.
+:::
+
+After`
+
+      const result = filterContentByFormat(content, 'ppt')
+      expect(result).not.toContain('Delivery dependency')
+      expect(result).not.toContain('Do not ship this to PPT')
+      expect(result).toContain('Before')
+      expect(result).toContain('After')
+    })
+  })
+
   describe('filterContentByFormat (confluence)', () => {
+    it('strips titled Astro note blocks such as Delivery dependency', () => {
+      const content = `Before
+
+:::note[Delivery dependency]
+Do not ship this to Confluence.
+:::
+
+After`
+
+      const result = filterContentByFormat(content, 'confluence')
+      expect(result).not.toContain('Delivery dependency')
+      expect(result).not.toContain('Do not ship this to Confluence')
+      expect(result).toContain('Before')
+      expect(result).toContain('After')
+    })
+
     it('keeps one continuous table after removing inline PPT_ONLY header repeats', () => {
       const content = `| Requirement | Pattern |
 |-------------|---------|
