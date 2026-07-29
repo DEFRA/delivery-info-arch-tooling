@@ -81,6 +81,67 @@ describe('content-processor', () => {
       expect(result).toContain('End')
     })
 
+    it('should not leave a blank line that breaks a table when removing a PPT_ONLY block', () => {
+      const content = [
+        '| Col A | Col B |',
+        '|-------|-------|',
+        '<!-- PPT_ONLY -->',
+        '| slide row | x |',
+        '<!-- /PPT_ONLY -->',
+        '| kept row | y |',
+        ''
+      ].join('\n')
+
+      const result = filterContentForFormat(content, 'confluence')
+
+      // A blank line here would terminate the table and render the
+      // following row as literal pipes in Confluence
+      expect(result).toBe('| Col A | Col B |\n|-------|-------|\n| kept row | y |\n')
+    })
+
+    it('should not leave a blank line that breaks a table when removing a GITHUB_ONLY block', () => {
+      const content = [
+        '| Col A | Col B |',
+        '|-------|-------|',
+        '<!-- GITHUB_ONLY -->',
+        '| gh row | x |',
+        '<!-- /GITHUB_ONLY -->',
+        '| kept row | y |',
+        ''
+      ].join('\n')
+
+      const result = filterContentForFormat(content, 'confluence')
+
+      expect(result).toBe('| Col A | Col B |\n|-------|-------|\n| kept row | y |\n')
+    })
+
+    it('should remove each of several PPT_ONLY blocks without leaving blank lines', () => {
+      const content = 'A\n<!-- PPT_ONLY -->\n1\n<!-- /PPT_ONLY -->\nB\n<!-- PPT_ONLY -->\n2\n<!-- /PPT_ONLY -->\nC\n'
+
+      const result = filterContentForFormat(content, 'confluence')
+
+      expect(result).toBe('A\nB\nC\n')
+    })
+
+    it('should handle a PPT_ONLY block at end of file with no trailing newline', () => {
+      const content = 'A\n<!-- PPT_ONLY -->\n1\n<!-- /PPT_ONLY -->'
+
+      const result = filterContentForFormat(content, 'confluence')
+
+      expect(result).toBe('A\n')
+    })
+
+    it('should preserve paragraph separation around a removed PPT_ONLY block', () => {
+      const content = 'Para one.\n\n<!-- PPT_ONLY -->\nslide\n<!-- /PPT_ONLY -->\n\nPara two.\n'
+
+      const result = filterContentForFormat(content, 'confluence')
+
+      // Only one newline is consumed, so the surrounding paragraphs stay separate
+      expect(result).toContain('Para one.')
+      expect(result).toContain('Para two.')
+      expect(result).toMatch(/Para one\.\n\s*\nPara two\./)
+    })
+
     it('should remove CONFLUENCE_ONLY markers but keep content', () => {
       const content = 'Start\n<!-- CONFLUENCE_ONLY -->\nConfluence content\n<!-- /CONFLUENCE_ONLY -->\nEnd'
       const result = filterContentForFormat(content, 'confluence')
