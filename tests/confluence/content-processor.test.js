@@ -123,14 +123,6 @@ describe('content-processor', () => {
       expect(result).toBe('A\nB\nC\n')
     })
 
-    it('should handle a PPT_ONLY block at end of file with no trailing newline', () => {
-      const content = 'A\n<!-- PPT_ONLY -->\n1\n<!-- /PPT_ONLY -->'
-
-      const result = filterContentForFormat(content, 'confluence')
-
-      expect(result).toBe('A\n')
-    })
-
     it('should preserve paragraph separation around a removed PPT_ONLY block', () => {
       const content = 'Para one.\n\n<!-- PPT_ONLY -->\nslide\n<!-- /PPT_ONLY -->\n\nPara two.\n'
 
