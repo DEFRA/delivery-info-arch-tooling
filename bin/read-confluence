@@ -1,0 +1,316 @@
+#!/usr/bin/env node
+/**
+ * read-confluence — pull Confluence pages down to Markdown.
+ *
+ * The counterpart to `publish-to-confluence`. Uses the same credentials
+ * (CONFLUENCE_USERNAME + CONFLUENCE_API_TOKEN) and the same REST base, but
+ * reads instead of writes and never mutates anything in Confluence.
+ *
+ * Written so it can run anywhere with network access to the instance —
+ * a developer terminal, CI, or an agent sandbox with egress enabled.
+ */
+
+const fs = require('fs')
+const path = require('path')
+
+const { createClient, parsePageId, resolveShortLink, resolveAuth, pageUrl, DEFAULT_BASE_URL } =
+  require('../lib/confluence/read-client')
+const { convert } = require('../lib/confluence/storage-to-markdown')
+
+const DEFAULT_OUT = 'tmp/confluence-cache'
+
+const USAGE = `
+read-confluence — pull Confluence pages down to Markdown
+
+Usage
+  read-confluence page <url|id>...        Fetch pages and write Markdown
+  read-confluence children <url|id>       List immediate child pages
+  read-confluence tree <url|id>           List all descendants
+  read-confluence sync <url|id>           Fetch a page and every descendant
+  read-confluence space <SPACEKEY>        Fetch every page in a space
+  read-confluence search <text|CQL>       Search, list matches
+  read-confluence spaces                  List visible spaces
+  read-confluence whoami                  Verify credentials
+
+Options
+  --out <dir>        Output directory            (default: ${DEFAULT_OUT})
+  --stdout           Print Markdown, write nothing
+  --json             Emit raw JSON instead of Markdown
+  --space <KEY>      Restrict a search to one space
+  --limit <n>        Cap results                 (default: 50 search, 1000 sync)
+  --url <base>       Confluence base URL         (default: ${DEFAULT_BASE_URL})
+  --quiet            Suppress progress output
+  -h, --help         Show this help
+
+Credentials
+  export CONFLUENCE_USERNAME="your-email@defra.gov.uk"
+  export CONFLUENCE_API_TOKEN="your-api-token"
+
+Examples
+  read-confluence page https://eaflood.atlassian.net/wiki/spaces/EUDP/pages/123456/TIG
+  read-confluence sync 123456 --out docs/.confluence
+  read-confluence search "TRACES Integration Gateway" --space EUDP
+  read-confluence search 'space=EUDP AND label="generated"'
+`
+
+/**
+ * Parse argv into a command, positional arguments and flags.
+ * @param {Array<string>} argv - Raw arguments
+ * @returns {{command: string, args: Array<string>, flags: Object}} Parsed input
+ */
+function parseArgs (argv) {
+  const flags = {}
+  const args = []
+  for (let i = 0; i < argv.length; i++) {
+    const token = argv[i]
+    if (token === '-h' || token === '--help') { flags.help = true; continue }
+    if (token === '--stdout') { flags.stdout = true; continue }
+    if (token === '--json') { flags.json = true; continue }
+    if (token === '--quiet') { flags.quiet = true; continue }
+    if (token.startsWith('--')) {
+      const [name, inline] = token.slice(2).split('=')
+      flags[name] = inline !== undefined ? inline : argv[++i]
+      continue
+    }
+    args.push(token)
+  }
+  return { command: args.shift(), args, flags }
+}
+
+/**
+ * Write a progress line to stderr so stdout stays pipeable.
+ * @param {Object} flags - Parsed flags
+ * @param {string} message - Message
+ * @returns {void}
+ */
+function log (flags, message) {
+  if (!flags.quiet) process.stderr.write(`${message}\n`)
+}
+
+/**
+ * Turn a page title into a filesystem-safe slug.
+ * @param {string} title - Page title
+ * @returns {string} Slug
+ */
+function slugify (title) {
+  return String(title || 'untitled')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'untitled'
+}
+
+/**
+ * Quote a value for YAML frontmatter.
+ * @param {*} value - Value
+ * @returns {string} Quoted scalar
+ */
+function yaml (value) {
+  return `"${String(value === undefined || value === null ? '' : value).replace(/"/g, '\\"')}"`
+}
+
+/**
+ * Render a page as Markdown with YAML frontmatter.
+ * @param {Object} page - Page object with expanded body.storage
+ * @param {string} baseUrl - Confluence base URL
+ * @returns {string} Markdown document
+ */
+function renderPage (page, baseUrl) {
+  const labels = ((page.metadata && page.metadata.labels && page.metadata.labels.results) || [])
+    .map(label => label.name)
+  const ancestors = (page.ancestors || []).map(a => a.title)
+  const storage = (page.body && page.body.storage && page.body.storage.value) || ''
+
+  const frontmatter = [
+    '---',
+    `confluence_id: ${yaml(page.id)}`,
+    `title: ${yaml(page.title)}`,
+    `space: ${yaml(page.space && page.space.key)}`,
+    `version: ${(page.version && page.version.number) || 0}`,
+    `updated: ${yaml(page.version && page.version.when)}`,
+    `updated_by: ${yaml(page.version && page.version.by && page.version.by.displayName)}`,
+    `url: ${yaml(pageUrl(baseUrl, page))}`,
+    `ancestors: [${ancestors.map(yaml).join(', ')}]`,
+    `labels: [${labels.map(yaml).join(', ')}]`,
+    `fetched: ${yaml(new Date().toISOString())}`,
+    '---',
+    ''
+  ].join('\n')
+
+  const body = convert(storage)
+  // Most pages carry the title only in metadata, so add it as the H1 —
+  // unless the body already opens with one, which would duplicate it.
+  const opensWithHeading = /^#\s/.test(body)
+  return `${frontmatter}\n${opensWithHeading ? '' : `# ${page.title}\n\n`}${body}`
+}
+
+/**
+ * Resolve a URL or ID to a page ID, following short links when needed.
+ * @param {string} input - URL or ID
+ * @param {Object} options - Client options
+ * @returns {Promise<string>} Page ID
+ * @throws {Error} When the input cannot be resolved
+ */
+async function toPageId (input, options) {
+  const direct = parsePageId(input)
+  if (direct) return direct
+  if (/\/wiki\/x\//.test(input)) {
+    const resolved = await resolveShortLink(input, resolveAuth(options))
+    if (resolved) return resolved
+  }
+  throw new Error(`Could not work out a page ID from "${input}". Pass the numeric ID or a /pages/<id>/ URL.`)
+}
+
+/**
+ * Write a page to disk and report where it landed.
+ * @param {Object} page - Page object
+ * @param {string} baseUrl - Confluence base URL
+ * @param {Object} flags - Parsed flags
+ * @returns {string|null} Written path, or null when printing to stdout
+ */
+function emitPage (page, baseUrl, flags) {
+  const content = flags.json ? JSON.stringify(page, null, 2) : renderPage(page, baseUrl)
+
+  if (flags.stdout) {
+    process.stdout.write(`${content}\n`)
+    return null
+  }
+
+  const outDir = flags.out || DEFAULT_OUT
+  const spaceDir = path.join(outDir, (page.space && page.space.key) || 'unknown')
+  fs.mkdirSync(spaceDir, { recursive: true })
+  const file = path.join(spaceDir, `${page.id}-${slugify(page.title)}.${flags.json ? 'json' : 'md'}`)
+  fs.writeFileSync(file, content, 'utf8')
+  return file
+}
+
+/**
+ * Print a one-line summary of a page for list-style commands.
+ * @param {Object} page - Page object
+ * @param {string} baseUrl - Confluence base URL
+ * @returns {string} Summary line
+ */
+function summarise (page, baseUrl) {
+  const space = (page.space && page.space.key) || '?'
+  return `${String(page.id).padEnd(12)} ${space.padEnd(8)} ${page.title}\n${' '.repeat(21)}${pageUrl(baseUrl, page)}`
+}
+
+/**
+ * Fetch a list of pages by ID and write each one.
+ * @param {Object} client - Read client
+ * @param {Array<string>} ids - Page IDs
+ * @param {Object} flags - Parsed flags
+ * @returns {Promise<Array<string>>} Written paths
+ */
+async function fetchAndEmit (client, ids, flags) {
+  const written = []
+  for (const [index, id] of ids.entries()) {
+    log(flags, `  [${index + 1}/${ids.length}] ${id}`)
+    const page = await client.getPage(id)
+    const file = emitPage(page, client.baseUrl, flags)
+    if (file) {
+      written.push(file)
+      log(flags, `      -> ${file}`)
+    }
+  }
+  return written
+}
+
+/**
+ * Entry point.
+ * @returns {Promise<void>}
+ */
+async function main () {
+  const { command, args, flags } = parseArgs(process.argv.slice(2))
+
+  if (!command || flags.help) {
+    process.stdout.write(`${USAGE}\n`)
+    process.exit(command ? 0 : 1)
+  }
+
+  const clientOptions = { baseUrl: flags.url }
+  const client = createClient(clientOptions)
+  const limit = flags.limit ? Number(flags.limit) : undefined
+
+  switch (command) {
+    case 'whoami': {
+      const user = await client.whoami()
+      process.stdout.write(`${user.displayName} <${user.email || user.username || user.accountId}> on ${client.baseUrl}\n`)
+      break
+    }
+
+    case 'spaces': {
+      const spaces = await client.getSpaces(limit || 500)
+      for (const space of spaces) {
+        process.stdout.write(`${space.key.padEnd(12)} ${space.name}\n`)
+      }
+      log(flags, `\n${spaces.length} space(s)`)
+      break
+    }
+
+    case 'page': {
+      if (!args.length) throw new Error('page needs at least one URL or ID')
+      const ids = []
+      for (const arg of args) ids.push(await toPageId(arg, clientOptions))
+      const written = await fetchAndEmit(client, ids, flags)
+      if (written.length) log(flags, `\n${written.length} page(s) written`)
+      break
+    }
+
+    case 'children':
+    case 'tree': {
+      if (!args[0]) throw new Error(`${command} needs a URL or ID`)
+      const id = await toPageId(args[0], clientOptions)
+      const pages = command === 'children'
+        ? await client.getChildren(id, limit || 200)
+        : await client.getDescendants(id, limit || 1000)
+      for (const page of pages) process.stdout.write(`${summarise(page, client.baseUrl)}\n`)
+      log(flags, `\n${pages.length} page(s)`)
+      break
+    }
+
+    case 'sync': {
+      if (!args[0]) throw new Error('sync needs a URL or ID')
+      const rootId = await toPageId(args[0], clientOptions)
+      const descendants = await client.getDescendants(rootId, limit || 1000)
+      const ids = [rootId, ...descendants.map(page => page.id)]
+      log(flags, `Syncing ${ids.length} page(s) from ${rootId}`)
+      const written = await fetchAndEmit(client, ids, flags)
+      log(flags, `\n${written.length} page(s) written to ${flags.out || DEFAULT_OUT}`)
+      break
+    }
+
+    case 'space': {
+      if (!args[0]) throw new Error('space needs a space key')
+      const pages = await client.getSpacePages(args[0], limit || 1000)
+      log(flags, `Syncing ${pages.length} page(s) from space ${args[0]}`)
+      const written = await fetchAndEmit(client, pages.map(page => page.id), flags)
+      log(flags, `\n${written.length} page(s) written to ${flags.out || DEFAULT_OUT}`)
+      break
+    }
+
+    case 'search': {
+      if (!args.length) throw new Error('search needs a query')
+      const raw = args.join(' ')
+      // Treat anything with a CQL operator as CQL, otherwise wrap it as a text search.
+      const looksLikeCql = /\b(space|title|label|type|ancestor|creator|created|lastmodified|text)\s*(=|!=|~|>|<|IN)/i.test(raw)
+      let cql = looksLikeCql ? raw : `text ~ "${raw.replace(/"/g, '\\"')}"`
+      if (flags.space && !/\bspace\s*=/i.test(cql)) cql = `space=${flags.space} AND ${cql}`
+      if (!/\btype\s*=/i.test(cql)) cql = `${cql} AND type=page`
+
+      log(flags, `CQL: ${cql}`)
+      const results = await client.search(cql, limit || 50)
+      for (const page of results) process.stdout.write(`${summarise(page, client.baseUrl)}\n`)
+      log(flags, `\n${results.length} result(s)`)
+      break
+    }
+
+    default:
+      throw new Error(`Unknown command "${command}". Run with --help.`)
+  }
+}
+
+main().catch(error => {
+  process.stderr.write(`\n${error.message}\n`)
+  process.exit(1)
+})

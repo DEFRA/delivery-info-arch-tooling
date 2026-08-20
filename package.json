@@ -8,7 +8,8 @@
         "generate-pptx": "./bin/generate-pptx",
         "export-pdf": "./bin/export-pdf",
         "export-diagrams": "./bin/export-diagrams",
-        "build-ppt-diagrams": "./bin/build-ppt-diagrams"
+        "build-ppt-diagrams": "./bin/build-ppt-diagrams",
+        "read-confluence": "./bin/read-confluence"
     },
     "scripts": {
         "test": "jest",

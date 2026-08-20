@@ -34,6 +34,24 @@ npm run publish:confluence
 npm run publish:confluence:space BTMS   # or a specific space
 ```
 
+### Reading from Confluence
+
+The read-side counterpart to publishing: pull pages down as Markdown (with YAML frontmatter) using the same credentials. It never modifies anything in Confluence.
+
+```bash
+export CONFLUENCE_USERNAME="your-email@defra.gov.uk"
+export CONFLUENCE_API_TOKEN="your-api-token"
+
+# Fetch a single page as Markdown
+npx read-confluence page https://eaflood.atlassian.net/wiki/spaces/EUDP/pages/123456/Title
+
+# Fetch a page and every descendant into a local cache
+npx read-confluence sync 123456 --out docs/.confluence
+
+# Search a space
+npx read-confluence search "TRACES Integration Gateway" --space EUDP
+```
+
 ### Generating PowerPoint
 
 ```bash
@@ -172,6 +190,44 @@ Options:
 }
 ```
 
+### read-confluence
+
+```
+Usage: read-confluence <command> [OPTIONS]
+
+Commands:
+  page <url|id>...        Fetch pages and write Markdown
+  children <url|id>       List immediate child pages
+  tree <url|id>           List all descendants
+  sync <url|id>           Fetch a page and every descendant
+  space <SPACEKEY>        Fetch every page in a space
+  search <text|CQL>       Search, list matches
+  spaces                  List visible spaces
+  whoami                  Verify credentials
+
+Options:
+  --out <dir>        Output directory            (default: tmp/confluence-cache)
+  --stdout           Print Markdown, write nothing
+  --json             Emit raw JSON instead of Markdown
+  --space <KEY>      Restrict a search to one space
+  --limit <n>        Cap results                 (default: 50 search, 1000 sync)
+  --url <base>       Confluence base URL         (default: https://eaflood.atlassian.net)
+  --quiet            Suppress progress output
+  -h, --help         Show this help
+```
+
+Pages accept a full URL (including short `/wiki/x/...` links), or a bare numeric page ID. Fetched pages are written to `<out>/<SPACE>/<id>-<slug>.md` with YAML frontmatter recording the page ID, space, version, labels, ancestors and URL. Search queries containing a CQL operator (`space=`, `label=`, `title~`, ...) are passed through as CQL; anything else is treated as a plain text search.
+
+**Example npm scripts**:
+```json
+{
+  "scripts": {
+    "confluence:pull": "read-confluence sync",
+    "confluence:search": "read-confluence search"
+  }
+}
+```
+
 ### generate-pptx
 
 ```
@@ -289,6 +345,14 @@ Options:
 - **Generated page protection**: Only updates pages with "generated" label
 - **Conditional content**: Supports PPT_ONLY, NOT_PPT, CONFLUENCE_ONLY, GITHUB_ONLY tags
 - **Diagram images**: Uses existing PNGs in `generated/diagrams/` — it does **not** re-export when you change C4 or Mermaid source. Run `npm run build:diagrams` (and `npm run build:mmd` for Mermaid) after updating diagrams, then publish. Missing images are exported on demand during publish.
+
+### Confluence Reading
+
+- **Storage format to Markdown**: Converts Confluence storage-format XHTML back to Markdown, including tables, lists, task lists, panels, code blocks and common macros
+- **YAML frontmatter**: Each fetched page records its ID, space, version, labels, ancestors and URL, so pages can be re-fetched or diffed later
+- **Hierarchy walking**: Fetch a single page, its children, a whole subtree or an entire space
+- **Search**: Plain text or raw CQL, optionally restricted to a space
+- **Read-only**: Uses the same credentials as publishing but never mutates Confluence
 
 ### PowerPoint Generation
 
