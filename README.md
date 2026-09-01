@@ -345,6 +345,7 @@ Options:
 - **Generated page protection**: Only updates pages with "generated" label
 - **Conditional content**: Supports PPT_ONLY, NOT_PPT, CONFLUENCE_ONLY, GITHUB_ONLY tags
 - **Diagram images**: Uses existing PNGs in `generated/diagrams/` — it does **not** re-export when you change C4 or Mermaid source. Run `npm run build:diagrams` (and `npm run build:mmd` for Mermaid) after updating diagrams, then publish. Missing images are exported on demand during publish.
+- **Mermaid source links**: Every `<MermaidDiagram diagramId="..." />` gets a *Diagram source:* [name.mmd](GitHub URL) caption beneath the image, resolved automatically from the `.mmd` file anywhere in the repository (`node_modules/`, `build/` and `generated/` are ignored). Nothing is needed on the tag. Set `"options": { "mermaidSourceLink": false }` in `confluence-config.json` to turn this off, or `"mmdDir"` to name a preferred source directory when several files share a basename.
 
 ### Confluence Reading
 

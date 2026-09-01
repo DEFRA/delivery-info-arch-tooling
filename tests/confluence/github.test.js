@@ -4,7 +4,7 @@
 
 const { execSync } = require('child_process')
 const path = require('path')
-const { getGitHubSourceUrl } = require('../../lib/confluence/lib/github')
+const { getGitHubSourceUrl, getDiagramSourceCaption } = require('../../lib/confluence/lib/github')
 
 // Mock child_process
 jest.mock('child_process', () => ({
@@ -88,6 +88,14 @@ describe('github', () => {
       expect(result).toBe('https://github.com/defra/test-repo/blob/main/docs/subdir/file.md')
     })
 
+    it('should tolerate an empty path', () => {
+      process.env.GITHUB_REPOSITORY = 'defra/test-repo'
+      execSync.mockImplementation(() => '')
+
+      const result = getGitHubSourceUrl('')
+      expect(result).toBe('https://github.com/defra/test-repo/blob/main/')
+    })
+
     it('should use GITHUB_REF_NAME or GITHUB_BRANCH when set', () => {
       process.env.GITHUB_REPOSITORY = 'defra/test-repo'
       process.env.GITHUB_REF_NAME = 'develop'
@@ -156,6 +164,38 @@ describe('github', () => {
       })
 
       const result = getGitHubSourceUrl('/some/path/file.md')
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('getDiagramSourceCaption', () => {
+    it('should build a markdown caption linking to the source file on GitHub', () => {
+      process.env.GITHUB_REPOSITORY = 'DEFRA/trade-imports-documentation'
+      execSync.mockImplementation((command) => {
+        if (command.includes('rev-parse --show-toplevel')) {
+          return '/repo/root'
+        }
+        return ''
+      })
+
+      const result = getDiagramSourceCaption('architecture/dr/DR-004-journey-domain-topology/dr-eudp-004.mmd')
+      expect(result).toBe(
+        '*Diagram source:* [dr-eudp-004.mmd](https://github.com/DEFRA/trade-imports-documentation/blob/main/architecture/dr/DR-004-journey-domain-topology/dr-eudp-004.mmd)'
+      )
+    })
+
+    it('should use the basename only for Windows-style paths', () => {
+      process.env.GITHUB_REPOSITORY = 'defra/test-repo'
+      execSync.mockImplementation(() => '')
+
+      const result = getDiagramSourceCaption('architecture\\adr\\ADR-001\\flow.mmd')
+      expect(result).toBe('*Diagram source:* [flow.mmd](https://github.com/defra/test-repo/blob/main/architecture/adr/ADR-001/flow.mmd)')
+    })
+
+    it('should return null when no GitHub repo is detected', () => {
+      execSync.mockImplementation(() => '')
+
+      const result = getDiagramSourceCaption('architecture/adr/ADR-001/flow.mmd')
       expect(result).toBeNull()
     })
   })
