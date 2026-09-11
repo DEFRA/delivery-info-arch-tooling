@@ -8,6 +8,7 @@
 const fs = require('fs')
 const path = require('path')
 const { glob } = require('glob')
+const { resolveDiagramTags } = require('../lib/pdf/diagrams')
 
 // Default patterns
 const DEFAULT_PATTERNS = [
@@ -89,16 +90,24 @@ async function main () {
             left: '15mm'
           }
         },
-        stylesheet: stylesheet,
+        stylesheet,
         body_class: 'markdown-body',
+        css: 'img { max-width: 100%; height: auto; }',
+        basedir: process.cwd(),
         marked_options: {
           breaks: true,
           gfm: true
         }
       }
 
+      // Resolve diagram component tags to images (relative to the markdown file).
+      // basedir is the repository root so those relative paths resolve; md-to-pdf
+      // keeps the page URL at the markdown's location so other links work too.
+      const markdown = fs.readFileSync(inputPath, 'utf8')
+      const content = resolveDiagramTags(markdown, { inputPath })
+
       // Generate PDF
-      const pdf = await mdToPdf({ path: inputPath }, pdfOptions)
+      const pdf = await mdToPdf({ path: inputPath, content }, pdfOptions)
 
       if (pdf) {
         fs.writeFileSync(outputPath, pdf.content)
@@ -115,4 +124,3 @@ async function main () {
 }
 
 main().catch(console.error)
-
