@@ -60,7 +60,12 @@ npm run build:ppt:diagrams "docs/overview.md"
 
 # Or build diagrams as part of PPT generation
 npm run pptx:build "docs/overview.md" -- --title "System Overview" --build-diagrams
+
+# For any deck you intend to share, build it editable (requires LibreOffice Impress)
+npm run pptx:build:editable "docs/overview.md"
 ```
+
+**Choose the right one.** The default export renders each slide in headless Chrome and embeds it as a full-slide image: it is pixel-accurate to the theme, but the file contains no text, so recipients cannot edit it, comment on it or collaborate on it. `--editable` routes the render through LibreOffice Impress and produces real text frames instead. Use the default for a deck you will present yourself, and `--editable` for one you send to other people.
 
 ### Exporting PDF
 
@@ -242,22 +247,30 @@ Options:
   --version                      Version number
   --heading-level                Heading level for slide breaks (1-6, default: 1)
   --keep-marp                    Keep intermediate .marp.md file
-  --editable                     Generate editable PPTX (experimental, requires LibreOffice Impress)
+  --editable                     Generate editable PPTX with real text instead of one image per
+                                 slide (experimental, requires LibreOffice Impress)
   --apply-template               Apply Defra template to generated PPTX (requires python-pptx)
   --template, -t                 Path to template file (default: templates/defra-template.pptx)
   --build-diagrams               Build only LikeC4/Mermaid images referenced by the input markdown
 ```
 
-**Example npm script**:
+**Example npm scripts**:
 ```json
 {
   "scripts": {
-    "pptx:build": "generate-pptx"
+    "pptx:build": "generate-pptx",
+    "pptx:build:editable": "generate-pptx --editable"
   }
 }
 ```
 
-Usage: `npm run pptx:build "docs/file.md" -- --title "Title" --editable`
+Usage:
+```bash
+npm run pptx:build "docs/file.md" -- --title "Title"   # image-per-slide, for presenting
+npm run pptx:build:editable "docs/file.md"             # real text, for sharing
+```
+
+Flags and the input file can appear in any order, so wrapping `--editable` in the npm script works as shown.
 
 ### export-pdf
 
@@ -357,14 +370,14 @@ Options:
 
 ### PowerPoint Generation
 
-- **Marp-based**: Uses Marp CLI for high-quality conversions
+- **Marp-based**: Uses Marp CLI for high-quality conversions. The default PPTX export embeds one rendered image per slide, so the deck carries no editable text
 - **Defra branding**: Bundled Defra templates and styling
 - **Heading-based slides**: Configure which heading level triggers new slides (default: H1)
 - **Theme support**: Customizable themes and styling
 - **Diagram embedding**: Converts LikeC4View components to images
 - **Conditional content**: Supports PPT_ONLY, PPT_SLIDE, NOT_PPT, CONFLUENCE_ONLY tags
 - **Headerless slide breaks**: `<!-- PPT_SLIDE -->` starts a new slide without H1/H2 section headers (use before diagram slides)
-- **Editable PPTX**: Optional editable output (experimental, requires LibreOffice Impress)
+- **Editable PPTX**: `--editable` produces real text frames via LibreOffice Impress, so recipients can edit and comment. Required for any deck being shared rather than presented. Marked experimental upstream and layouts can break, so check the output
 - **Image path conversion**: Automatically converts absolute paths for PPT compatibility
 
 ### Bundled Templates
