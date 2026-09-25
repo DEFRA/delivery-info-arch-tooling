@@ -88,7 +88,10 @@ Both exports keep the notes. Marp's `--pptx-editable` route drops them, so after
 
 ```bash
 npm run export:pdf docs/analysis.md
+npm run export:pdf -- --styled docs/analysis.md   # bordered tables and base typography
 ```
+
+Without `--styled` the PDF uses browser defaults, which render tables with no borders. `--styled` applies the bundled `lib/pdf/pdf-styles.css`: bordered tables with a shaded header row that repeats across pages, rows kept whole across page breaks, and smaller table text so wide tables fit A4.
 
 ### Exporting Diagrams
 
@@ -129,7 +132,8 @@ await tooling.ppt.generate({
 await tooling.pdf.export({
   inputFile: 'docs/analysis.md',
   outputDir: 'generated/pdf',  // Optional, defaults to 'generated/pdf'
-  cssPath: 'custom.css'  // Optional custom CSS
+  cssPath: 'custom.css',  // Optional custom CSS; takes precedence over styled
+  styled: true  // Optional: bundled stylesheet with table borders, defaults to false
 });
 
 // Export LikeC4 diagrams
@@ -292,10 +296,15 @@ Flags and the input file can appear in any order, so wrapping `--editable` in th
 ### export-pdf
 
 ```
-Usage: export-pdf [FILES...]
+Usage: export-pdf [--styled] [FILES...]
 
 If no files specified, exports all markdown files matching default patterns.
+
+Options:
+  --styled   Apply the bundled stylesheet (bordered tables, base typography)
 ```
+
+Flags and files can appear in any order.
 
 **Example npm script**:
 ```json

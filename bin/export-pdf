@@ -9,6 +9,7 @@ const fs = require('fs')
 const path = require('path')
 const { glob } = require('glob')
 const { resolveDiagramTags } = require('../lib/pdf/diagrams')
+const { resolveStylesheet } = require('../lib/pdf')
 
 // Default patterns
 const DEFAULT_PATTERNS = [
@@ -16,14 +17,16 @@ const DEFAULT_PATTERNS = [
   'architecture/roadmap/**/analysis/**/*.md'
 ]
 
-// Parse arguments
+// Parse arguments. Flags and files can appear in any order.
 const args = process.argv.slice(2)
+const styled = args.includes('--styled')
+const fileArgs = args.filter(a => !a.startsWith('-'))
 
 async function main () {
   let files
 
-  if (args.length > 0 && !args[0].startsWith('-')) {
-    files = args.filter(a => !a.startsWith('-'))
+  if (fileArgs.length > 0) {
+    files = fileArgs
   } else {
     const allFiles = []
     for (const pattern of DEFAULT_PATTERNS) {
@@ -51,9 +54,8 @@ async function main () {
     process.exit(1)
   }
 
-  // Find CSS file if available
-  const cssPath = path.join(__dirname, '..', 'lib', 'pdf', 'pdf-styles.css')
-  const stylesheet = fs.existsSync(cssPath) ? [cssPath] : []
+  // Bundled stylesheet (table borders, base typography) only with --styled
+  const stylesheet = resolveStylesheet(undefined, styled)
 
   // Create output directory
   const pdfOutputDir = path.join(process.cwd(), 'generated', 'pdf')
