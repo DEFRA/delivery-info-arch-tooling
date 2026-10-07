@@ -10,7 +10,8 @@ const {
   confluenceRequest,
   searchPagesByTitle,
   getPageByTitle,
-  findPageByTitle
+  findPageByTitle,
+  findCurrentPageId
 } = require('../../lib/confluence/lib/api-client')
 
 describe('api-client', () => {
@@ -419,6 +420,39 @@ describe('api-client', () => {
 
       expect(result.count).toBe(0)
       expect(result.page.results).toEqual([])
+    })
+  })
+
+  describe('findCurrentPageId', () => {
+    const auth = { username: 'user', apiToken: 'token' }
+
+    it('returns the ID of the page with the exact title', async () => {
+      global.fetch.mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        text: jest.fn().mockResolvedValue('{"results": [{"id": "456"}]}'),
+        headers: new Map()
+      })
+
+      const result = await findCurrentPageId('A Page: With Colon', 'EUDP', auth)
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://test.atlassian.net/wiki/rest/api/content?spaceKey=EUDP&title=A%20Page%3A%20With%20Colon',
+        expect.anything()
+      )
+      expect(result).toBe('456')
+    })
+
+    it('returns null without further fallbacks when no page matches', async () => {
+      global.fetch.mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        text: jest.fn().mockResolvedValue('{"results": []}'),
+        headers: new Map()
+      })
+
+      expect(await findCurrentPageId('Missing', 'EUDP', auth)).toBeNull()
+      expect(global.fetch).toHaveBeenCalledTimes(1)
     })
   })
 })
