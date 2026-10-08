@@ -75,6 +75,32 @@ describe('uploadImageAttachment', () => {
     expect(result).toEqual({ attachmentId: 'att42', fileId: 'file-new', filename: 'diagram.svg' })
   })
 
+  it('names the source page in the attachment comment', async () => {
+    const sent = mockResponse(200, { results: [{ id: 'att42', extensions: { fileId: 'f' } }] })
+
+    await uploadImageAttachment('123', imagePath, auth, 'docs/systems/A/page.md')
+
+    expect(sent.body).toMatch(/name="comment"\r\n\r\nPublished from docs\/systems\/A\/page\.md\r\n/)
+  })
+
+  it('uses a generic attachment comment when no source page is given', async () => {
+    const sent = mockResponse(200, { results: [{ id: 'att42', extensions: { fileId: 'f' } }] })
+
+    await uploadImageAttachment('123', imagePath, auth)
+
+    expect(sent.body).toMatch(/name="comment"\r\n\r\nPublished by delivery-info-arch-tooling\r\n/)
+  })
+
+  it('logs whether the upload created an attachment or updated one', async () => {
+    mockResponse(200, { results: [{ id: 'att1', version: { number: 1 }, extensions: { fileId: 'f1' } }] })
+    await uploadImageAttachment('123', imagePath, auth)
+    mockResponse(200, { results: [{ id: 'att2', version: { number: 3 }, extensions: { fileId: 'f2' } }] })
+    await uploadImageAttachment('123', imagePath, auth)
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith('    ✅ Image uploaded successfully (new attachment)')
+    expect(consoleErrorSpy).toHaveBeenCalledWith('    ✅ Image uploaded successfully (updated to version 3)')
+  })
+
   it('returns null and names the HTTP status when the body is empty', async () => {
     mockResponse(400, '', 'Bad Request')
 

@@ -128,6 +128,9 @@ describe('publishing a markdown page', () => {
 
     expect(result).toEqual({ success: 1, failed: 0, skipped: 1 })
     expect(imageHandler.replaceImagePlaceholdersAtlas).toHaveBeenCalled()
+    expect(imageHandler.uploadImageAttachment).toHaveBeenCalledWith(
+      '555', expect.stringMatching(/diagrams[\\/]d\.svg$/), options.auth, 'docs/systems/EUDP/page.md'
+    )
   })
 
   it('counts the page as failed when an image upload fails', async () => {
