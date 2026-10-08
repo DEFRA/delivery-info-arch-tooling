@@ -34,6 +34,24 @@ npm run publish:confluence
 npm run publish:confluence:space BTMS   # or a specific space
 ```
 
+### Reading from Confluence
+
+The read-side counterpart to publishing: pull pages down as Markdown (with YAML frontmatter) using the same credentials. It never modifies anything in Confluence.
+
+```bash
+export CONFLUENCE_USERNAME="your-email@defra.gov.uk"
+export CONFLUENCE_API_TOKEN="your-api-token"
+
+# Fetch a single page as Markdown
+npx read-confluence page https://eaflood.atlassian.net/wiki/spaces/EUDP/pages/123456/Title
+
+# Fetch a page and every descendant into a local cache
+npx read-confluence sync 123456 --out docs/.confluence
+
+# Search a space
+npx read-confluence search "TRACES Integration Gateway" --space EUDP
+```
+
 ### Generating PowerPoint
 
 ```bash
@@ -42,7 +60,12 @@ npm run build:ppt:diagrams "docs/overview.md"
 
 # Or build diagrams as part of PPT generation
 npm run pptx:build "docs/overview.md" -- --title "System Overview" --build-diagrams
+
+# For any deck you intend to share, build it editable (requires LibreOffice Impress)
+npm run pptx:build:editable "docs/overview.md"
 ```
+
+**Choose the right one.** The default export renders each slide in headless Chrome and embeds it as a full-slide image: it is pixel-accurate to the theme, but the file contains no text, so recipients cannot edit it, comment on it or collaborate on it. `--editable` routes the render through LibreOffice Impress and produces real text frames instead. Use the default for a deck you will present yourself, and `--editable` for one you send to other people.
 
 ### Exporting PDF
 
@@ -172,6 +195,44 @@ Options:
 }
 ```
 
+### read-confluence
+
+```
+Usage: read-confluence <command> [OPTIONS]
+
+Commands:
+  page <url|id>...        Fetch pages and write Markdown
+  children <url|id>       List immediate child pages
+  tree <url|id>           List all descendants
+  sync <url|id>           Fetch a page and every descendant
+  space <SPACEKEY>        Fetch every page in a space
+  search <text|CQL>       Search, list matches
+  spaces                  List visible spaces
+  whoami                  Verify credentials
+
+Options:
+  --out <dir>        Output directory            (default: tmp/confluence-cache)
+  --stdout           Print Markdown, write nothing
+  --json             Emit raw JSON instead of Markdown
+  --space <KEY>      Restrict a search to one space
+  --limit <n>        Cap results                 (default: 50 search, 1000 sync)
+  --url <base>       Confluence base URL         (default: https://eaflood.atlassian.net)
+  --quiet            Suppress progress output
+  -h, --help         Show this help
+```
+
+Pages accept a full URL (including short `/wiki/x/...` links), or a bare numeric page ID. Fetched pages are written to `<out>/<SPACE>/<id>-<slug>.md` with YAML frontmatter recording the page ID, space, version, labels, ancestors and URL. Search queries containing a CQL operator (`space=`, `label=`, `title~`, ...) are passed through as CQL; anything else is treated as a plain text search.
+
+**Example npm scripts**:
+```json
+{
+  "scripts": {
+    "confluence:pull": "read-confluence sync",
+    "confluence:search": "read-confluence search"
+  }
+}
+```
+
 ### generate-pptx
 
 ```
@@ -186,22 +247,30 @@ Options:
   --version                      Version number
   --heading-level                Heading level for slide breaks (1-6, default: 1)
   --keep-marp                    Keep intermediate .marp.md file
-  --editable                     Generate editable PPTX (experimental, requires LibreOffice Impress)
+  --editable                     Generate editable PPTX with real text instead of one image per
+                                 slide (experimental, requires LibreOffice Impress)
   --apply-template               Apply Defra template to generated PPTX (requires python-pptx)
   --template, -t                 Path to template file (default: templates/defra-template.pptx)
   --build-diagrams               Build only LikeC4/Mermaid images referenced by the input markdown
 ```
 
-**Example npm script**:
+**Example npm scripts**:
 ```json
 {
   "scripts": {
-    "pptx:build": "generate-pptx"
+    "pptx:build": "generate-pptx",
+    "pptx:build:editable": "generate-pptx --editable"
   }
 }
 ```
 
-Usage: `npm run pptx:build "docs/file.md" -- --title "Title" --editable`
+Usage:
+```bash
+npm run pptx:build "docs/file.md" -- --title "Title"   # image-per-slide, for presenting
+npm run pptx:build:editable "docs/file.md"             # real text, for sharing
+```
+
+Flags and the input file can appear in any order, so wrapping `--editable` in the npm script works as shown.
 
 ### export-pdf
 
@@ -290,17 +359,26 @@ Options:
 - **Generated page protection**: Only updates pages with "generated" label
 - **Conditional content**: Supports PPT_ONLY, NOT_PPT, CONFLUENCE_ONLY, GITHUB_ONLY tags
 - **Diagram images**: Uses existing PNGs in `generated/diagrams/` — it does **not** re-export when you change C4 or Mermaid source. Run `npm run build:diagrams` (and `npm run build:mmd` for Mermaid) after updating diagrams, then publish. Missing images are exported on demand during publish.
+- **Mermaid source links**: Every `<MermaidDiagram diagramId="..." />` gets a *Diagram source:* [name.mmd](GitHub URL) caption beneath the image, resolved automatically from the `.mmd` file anywhere in the repository (`node_modules/`, `build/` and `generated/` are ignored). Nothing is needed on the tag. Set `"options": { "mermaidSourceLink": false }` in `confluence-config.json` to turn this off, or `"mmdDir"` to name a preferred source directory when several files share a basename.
+
+### Confluence Reading
+
+- **Storage format to Markdown**: Converts Confluence storage-format XHTML back to Markdown, including tables, lists, task lists, panels, code blocks and common macros
+- **YAML frontmatter**: Each fetched page records its ID, space, version, labels, ancestors and URL, so pages can be re-fetched or diffed later
+- **Hierarchy walking**: Fetch a single page, its children, a whole subtree or an entire space
+- **Search**: Plain text or raw CQL, optionally restricted to a space
+- **Read-only**: Uses the same credentials as publishing but never mutates Confluence
 
 ### PowerPoint Generation
 
-- **Marp-based**: Uses Marp CLI for high-quality conversions
+- **Marp-based**: Uses Marp CLI for high-quality conversions. The default PPTX export embeds one rendered image per slide, so the deck carries no editable text
 - **Defra branding**: Bundled Defra templates and styling
 - **Heading-based slides**: Configure which heading level triggers new slides (default: H1)
 - **Theme support**: Customizable themes and styling
 - **Diagram embedding**: Converts LikeC4View components to images
 - **Conditional content**: Supports PPT_ONLY, PPT_SLIDE, NOT_PPT, CONFLUENCE_ONLY tags
 - **Headerless slide breaks**: `<!-- PPT_SLIDE -->` starts a new slide without H1/H2 section headers (use before diagram slides)
-- **Editable PPTX**: Optional editable output (experimental, requires LibreOffice Impress)
+- **Editable PPTX**: `--editable` produces real text frames via LibreOffice Impress, so recipients can edit and comment. Required for any deck being shared rather than presented. Marked experimental upstream and layouts can break, so check the output
 - **Image path conversion**: Automatically converts absolute paths for PPT compatibility
 
 ### Bundled Templates

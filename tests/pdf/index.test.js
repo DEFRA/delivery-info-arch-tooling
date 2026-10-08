@@ -14,6 +14,10 @@ jest.mock('fs', () => ({
   writeFileSync: jest.fn()
 }))
 
+jest.mock('../../lib/pdf/diagrams', () => ({
+  resolveDiagramTags: jest.fn((markdown) => `${markdown}:resolved`)
+}))
+
 jest.mock('md-to-pdf', () => {
   return jest.fn(async (input, options) => {
     // Simulate successful PDF generation
@@ -54,6 +58,13 @@ describe('pdf/index', () => {
 
       expect(fs.existsSync).toHaveBeenCalledWith(path.resolve(inputFile))
       expect(mdToPdf).toHaveBeenCalled()
+      expect(fs.readFileSync).toHaveBeenCalledWith(path.resolve(inputFile), 'utf8')
+      const { resolveDiagramTags } = require('../../lib/pdf/diagrams')
+      expect(resolveDiagramTags).toHaveBeenCalledWith(undefined, { inputPath: path.resolve(inputFile) })
+      const [input, options] = mdToPdf.mock.calls[0]
+      expect(input).toEqual({ path: path.resolve(inputFile), content: 'undefined:resolved' })
+      expect(options.basedir).toBe(process.cwd())
+      expect(options.css).toContain('max-width: 100%')
       expect(fs.writeFileSync).toHaveBeenCalled()
       expect(result).toContain(path.join('generated', 'pdf'))
       expect(result).toContain('test.pdf')
