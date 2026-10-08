@@ -27,12 +27,14 @@ jest.mock('../../lib/confluence/lib/content-processor', () => ({
 }))
 
 jest.mock('../../lib/confluence/lib/github', () => ({
-  getGitHubSourceUrl: jest.fn()
+  getGitHubSourceUrl: jest.fn(),
+  getDiagramSourceCaption: jest.fn()
 }))
 
 jest.mock('../../lib/confluence/lib/image-handler', () => ({
   setConfig: jest.fn(),
   findMermaidDiagram: jest.fn(),
+  findMermaidSource: jest.fn(),
   uploadImageAttachment: jest.fn(),
   replaceImagePlaceholdersAtlas: jest.fn()
 }))
