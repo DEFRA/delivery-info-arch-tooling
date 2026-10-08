@@ -32,6 +32,7 @@ jest.mock('../../lib/confluence/lib/github', () => ({
 
 jest.mock('../../lib/confluence/lib/image-handler', () => ({
   setConfig: jest.fn(),
+  findMermaidDiagram: jest.fn(),
   uploadImageAttachment: jest.fn(),
   replaceImagePlaceholdersAtlas: jest.fn()
 }))
@@ -66,6 +67,13 @@ describe('publishing a markdown page', () => {
     confluenceUrl: 'https://test.atlassian.net'
   }
   const spies = []
+
+  // Replace the config the publisher reads for one test
+  function useConfig (publishPaths) {
+    const json = JSON.stringify({ spaceMapping: { EUDP: 'EUDP' }, publishPaths })
+    fs.promises.readFile.mockResolvedValue(json)
+    fs.readFileSync.mockReturnValue(json)
+  }
 
   beforeEach(() => {
     jest.clearAllMocks()
@@ -129,5 +137,67 @@ describe('publishing a markdown page', () => {
     expect(console.error).toHaveBeenCalledWith(
       '  ❌ Failed to publish docs/systems/EUDP/page.md: 1 image upload(s) failed: d.svg'
     )
+  })
+
+  it('counts the page as failed when a diagram upload fails, after placing the images that uploaded', async () => {
+    contentProcessor.readFileContent.mockResolvedValue('# Page\n\n<MermaidDiagram diagramId="flow" />\n\n![d](diagrams/d.svg)')
+    imageHandler.findMermaidDiagram.mockResolvedValue('/repo/build/mmd/flow.svg')
+    imageHandler.uploadImageAttachment.mockImplementation(async (pageId, imagePath) =>
+      imagePath.endsWith('flow.svg') ? null : { attachmentId: 'att1', fileId: 'f1', filename: 'd.svg' })
+
+    const result = await publish(options)
+
+    expect(result).toEqual({ success: 0, failed: 1, skipped: 1 })
+    expect(imageHandler.replaceImagePlaceholdersAtlas).toHaveBeenCalledWith(
+      expect.anything(), [expect.objectContaining({ viewId: 'd.svg' })], '555'
+    )
+    expect(console.error).toHaveBeenCalledWith(
+      '  ❌ Failed to publish docs/systems/EUDP/page.md: 1 image upload(s) failed: flow.svg'
+    )
+  })
+
+  it('resolves links to an entry whose type is not markdown but publishes as markdown', async () => {
+    useConfig([{ path: 'systems/EUDP/page.md' }, { path: 'systems/EUDP/other.md', type: 'md' }])
+    imageHandler.uploadImageAttachment.mockResolvedValue({ attachmentId: 'att1', fileId: 'f1', filename: 'd.svg' })
+
+    await publish(options)
+
+    expect(apiClient.findCurrentPageId).toHaveBeenCalledWith('Other', 'EUDP', options.auth)
+  })
+
+  it('looks a link target up in the default space when its path maps to no space', async () => {
+    process.env.CONFLUENCE_SPACE = 'DEFAULT'
+    hierarchyManager.getSpaceForPath.mockImplementation(async (file) => file.endsWith('other.md') ? null : 'EUDP')
+    imageHandler.uploadImageAttachment.mockResolvedValue({ attachmentId: 'att1', fileId: 'f1', filename: 'd.svg' })
+
+    try {
+      await publish(options)
+    } finally {
+      delete process.env.CONFLUENCE_SPACE
+    }
+
+    expect(apiClient.findCurrentPageId).toHaveBeenCalledWith('Other', 'DEFAULT', options.auth)
+  })
+
+  it('reports a missing single-file entry as not found and counts it as failed', async () => {
+    useConfig([{ path: 'systems/EUDP/missing.md' }])
+    fs.promises.access.mockImplementation(async (file) => {
+      if (String(file).endsWith('missing.md')) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    })
+
+    const result = await publish({ ...options, fileFilter: null })
+
+    expect(result).toEqual({ success: 0, failed: 1, skipped: 0 })
+    expect(console.error).toHaveBeenCalledWith('  ⚠️  File not found: docs/systems/EUDP/missing.md')
+  })
+
+  it('publishes a diagram entry through the diagram path, not as markdown', async () => {
+    useConfig([{ path: 'systems/EUDP/page.md', type: 'diagram' }])
+
+    const result = await publish(options)
+
+    expect(result).toEqual({ success: 1, failed: 0, skipped: 0 })
+    expect(contentProcessor.convertMarkdownToAtlasDoc).not.toHaveBeenCalled()
+    expect(console.error).toHaveBeenCalledWith('  Publishing diagram: Page')
   })
 })

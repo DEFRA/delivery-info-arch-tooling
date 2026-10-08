@@ -454,5 +454,22 @@ describe('api-client', () => {
       expect(await findCurrentPageId('Missing', 'EUDP', auth)).toBeNull()
       expect(global.fetch).toHaveBeenCalledTimes(1)
     })
+
+    it('throws on an error response instead of reporting no page', async () => {
+      global.fetch.mockResolvedValueOnce({
+        status: 429,
+        ok: false,
+        text: jest.fn().mockResolvedValue(''),
+        headers: new Map()
+      })
+
+      await expect(findCurrentPageId('Busy', 'EUDP', auth)).rejects.toThrow('page lookup failed (HTTP 429)')
+    })
+
+    it('throws when the request itself fails', async () => {
+      global.fetch.mockRejectedValueOnce(new Error('getaddrinfo ENOTFOUND'))
+
+      await expect(findCurrentPageId('Offline', 'EUDP', auth)).rejects.toThrow('HTTP request failed: getaddrinfo ENOTFOUND')
+    })
   })
 })

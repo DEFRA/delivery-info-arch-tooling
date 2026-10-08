@@ -83,4 +83,47 @@ describe('uploadImageAttachment', () => {
     expect(result).toBeNull()
     expect(consoleErrorSpy).toHaveBeenCalledWith('    ❌ Failed to upload image (HTTP 400): Bad Request')
   })
+
+  it('accepts a 201 with the attachment at the top level of the body', async () => {
+    mockResponse(201, { id: 'att7', title: 'diagram.svg', extensions: { fileId: 'file-7' } })
+
+    const result = await uploadImageAttachment('123', imagePath, auth)
+
+    expect(result).toEqual({ attachmentId: 'att7', fileId: 'file-7', filename: 'diagram.svg' })
+  })
+
+  it('looks the attachment up by filename when the response carries no IDs', async () => {
+    mockResponse(200, { results: [] })
+    confluenceRequest.mockResolvedValueOnce({
+      status: 200,
+      body: { results: [{ id: 'att9', title: 'Diagram.SVG', extensions: { fileId: 'file-9' } }] }
+    })
+
+    const result = await uploadImageAttachment('123', imagePath, auth)
+
+    expect(confluenceRequest).toHaveBeenCalledWith('GET', '/content/123/child/attachment', { auth })
+    expect(result).toEqual({ attachmentId: 'att9', fileId: 'file-9', filename: 'diagram.svg' })
+  })
+
+  it('returns null and names the error when the request fails', async () => {
+    https.request.mockImplementation(() => {
+      const req = new PassThrough()
+      process.nextTick(() => req.emit('error', new Error('read ETIMEDOUT')))
+      return req
+    })
+
+    const result = await uploadImageAttachment('123', imagePath, auth)
+
+    expect(result).toBeNull()
+    expect(consoleErrorSpy).toHaveBeenCalledWith('    ❌ Failed to upload image: read ETIMEDOUT')
+  })
+
+  it('does not upload in a dry run', async () => {
+    setConfig({ dryRun: true })
+
+    const result = await uploadImageAttachment('123', imagePath, auth)
+
+    expect(result).toBeNull()
+    expect(https.request).not.toHaveBeenCalled()
+  })
 })
