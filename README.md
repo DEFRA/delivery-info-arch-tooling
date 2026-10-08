@@ -351,7 +351,8 @@ Options:
 
 - **Markdown to ADF**: Converts markdown to Confluence's Atlas Document Format
 - **Hierarchy preservation**: Creates folder pages to preserve directory structure
-- **Image handling**: Uploads and embeds LikeC4, Mermaid, and manual diagrams
+- **Image handling**: Uploads and embeds LikeC4, Mermaid, and manual diagrams. Each image is created, or updated as a new version, with one attachment upload. If any image fails to upload, the page is counted as failed and the run exits non-zero. The page text is already live at that point, so rerun the publish to complete the page
+- **Links between pages**: A relative link to another markdown page (`[text](other-page.md)`) becomes a link to that page in Confluence, found by its title in its space. A target that is not in `publishPaths`, or has no page yet, links to its source on GitHub instead, with a warning in the log. Anchors and link titles are dropped. Reference-style links are not rewritten and are reported with a warning
 - **Warning panels**: Auto-adds "generated from source" warnings
 - **Table of contents**: Auto-generates TOC for pages with many headings
 - **Space filtering**: Publish to specific spaces via `--space` option
