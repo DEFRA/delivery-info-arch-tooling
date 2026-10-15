@@ -8,6 +8,7 @@ const {
   readFileContent,
   filterContentForFormat,
   extractTitle,
+  extractConfluenceParent,
   convertMarkdownToStorage,
   addWarningPanelToAtlas,
   addWarningPanelToContent
@@ -100,6 +101,38 @@ describe('content-processor', () => {
       const content = 'Some content\n<!-- PPT_ONLY -->\nPPT\n<!-- /PPT_ONLY -->'
       const result = filterContentForFormat(content, 'ppt')
       expect(result).toBe(content)
+    })
+  })
+
+  describe('extractConfluenceParent', () => {
+    it('reads a quoted parent title nested under confluence', async () => {
+      fs.promises.readFile.mockResolvedValueOnce('---\ntitle: "Child"\nconfluence:\n  parent: "02 INS Auth: Scenarios"\n---\n\n# Content')
+
+      await expect(extractConfluenceParent('/path/to/file.md')).resolves.toBe('02 INS Auth: Scenarios')
+    })
+
+    it('reads an unquoted parent title', async () => {
+      fs.promises.readFile.mockResolvedValueOnce('---\ntitle: Child\nconfluence:\n  parent: Parent Page\n---\n')
+
+      await expect(extractConfluenceParent('/path/to/file.md')).resolves.toBe('Parent Page')
+    })
+
+    it('returns null when the frontmatter names no parent', async () => {
+      fs.promises.readFile.mockResolvedValueOnce('---\ntitle: "Child"\n---\n\n# Content')
+
+      await expect(extractConfluenceParent('/path/to/file.md')).resolves.toBeNull()
+    })
+
+    it('returns null when there is no frontmatter', async () => {
+      fs.promises.readFile.mockResolvedValueOnce('# Content\n\nparent: not frontmatter')
+
+      await expect(extractConfluenceParent('/path/to/file.md')).resolves.toBeNull()
+    })
+
+    it('ignores a parent key outside the confluence block', async () => {
+      fs.promises.readFile.mockResolvedValueOnce('---\ntitle: "Child"\nsidebar:\n  parent: "Wrong"\n---\n')
+
+      await expect(extractConfluenceParent('/path/to/file.md')).resolves.toBeNull()
     })
   })
 

@@ -234,9 +234,11 @@ async function main() {
     console.log(`  ✅ Successful: ${stats.success}`)
     console.log(`  ❌ Failed: ${stats.failed}`)
     console.log(`  ⏭️  Skipped: ${stats.skipped}`)
+    console.log(`  🔗 Broken links: ${result.brokenLinks || 0}`)
+    console.log(`  ⚠️  External links not reachable: ${result.unreachableLinks || 0}`)
     console.log('================================================')
 
-    if (stats.failed > 0) {
+    if (stats.failed > 0 || result.brokenLinks > 0) {
         process.exit(1)
     }
 }
