@@ -144,6 +144,54 @@ describe('publishing a markdown page', () => {
     )
   })
 
+  it('uploads an image used twice on a page once', async () => {
+    contentProcessor.readFileContent.mockResolvedValue('# Page\n\n![d](diagrams/d.svg)\n\nText.\n\n![d again](diagrams/d.svg)')
+    imageHandler.uploadImageAttachment.mockResolvedValue({ attachmentId: 'att1', fileId: 'f1', filename: 'd.svg' })
+
+    const result = await publish(options)
+
+    expect(result).toEqual({ success: 1, failed: 0, skipped: 1 })
+    expect(imageHandler.uploadImageAttachment).toHaveBeenCalledTimes(1)
+    expect(imageHandler.replaceImagePlaceholdersAtlas).toHaveBeenCalledWith(
+      expect.anything(), [expect.objectContaining({ viewId: 'd.svg', originalPath: 'diagrams/d.svg' })], '555'
+    )
+  })
+
+  it('reports a failed upload of an image used twice once', async () => {
+    contentProcessor.readFileContent.mockResolvedValue('# Page\n\n![d](diagrams/d.svg)\n\n![d again](diagrams/d.svg)')
+    imageHandler.uploadImageAttachment.mockResolvedValue(null)
+
+    const result = await publish(options)
+
+    expect(result).toEqual({ success: 0, failed: 1, skipped: 1 })
+    expect(imageHandler.uploadImageAttachment).toHaveBeenCalledTimes(1)
+    expect(console.error).toHaveBeenCalledWith(
+      '  ❌ Failed to publish docs/systems/EUDP/page.md: 1 image upload(s) failed: d.svg'
+    )
+  })
+
+  it('uploads a Mermaid diagram used twice on a page once', async () => {
+    contentProcessor.readFileContent.mockResolvedValue('# Page\n\n<MermaidDiagram diagramId="flow" />\n\nText.\n\n<MermaidDiagram diagramId="flow" />')
+    imageHandler.findMermaidDiagram.mockResolvedValue('build/mmd/flow.svg')
+    imageHandler.uploadImageAttachment.mockResolvedValue({ attachmentId: 'att2', fileId: 'f2', filename: 'flow.svg' })
+
+    const result = await publish(options)
+
+    expect(result).toEqual({ success: 1, failed: 0, skipped: 1 })
+    expect(imageHandler.uploadImageAttachment).toHaveBeenCalledTimes(1)
+  })
+
+  it('uploads a file used both as a Mermaid diagram and as a markdown image once', async () => {
+    contentProcessor.readFileContent.mockResolvedValue('# Page\n\n<MermaidDiagram diagramId="flow" />\n\n![flow](../../../build/mmd/flow.svg)')
+    imageHandler.findMermaidDiagram.mockResolvedValue('build/mmd/flow.svg')
+    imageHandler.uploadImageAttachment.mockResolvedValue({ attachmentId: 'att2', fileId: 'f2', filename: 'flow.svg' })
+
+    const result = await publish(options)
+
+    expect(result).toEqual({ success: 1, failed: 0, skipped: 1 })
+    expect(imageHandler.uploadImageAttachment).toHaveBeenCalledTimes(1)
+  })
+
   it('counts the page as failed when a diagram upload fails, after placing the images that uploaded', async () => {
     contentProcessor.readFileContent.mockResolvedValue('# Page\n\n<MermaidDiagram diagramId="flow" />\n\n![d](diagrams/d.svg)')
     imageHandler.findMermaidDiagram.mockResolvedValue('/repo/build/mmd/flow.svg')
