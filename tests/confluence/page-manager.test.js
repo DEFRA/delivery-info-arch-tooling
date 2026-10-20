@@ -90,6 +90,19 @@ describe('page-manager', () => {
       expect(payload.ancestors).toBeUndefined()
     })
 
+    it('keeps the parent out of an update payload unless asked to reparent', () => {
+      const payload = createPagePayload('Test Page', { type: 'doc', content: [] }, 'parent123', 5, 'TEST', true)
+
+      expect(payload.ancestors).toBeUndefined()
+    })
+
+    it('moves the page under the parent on an update when asked to reparent', () => {
+      const payload = createPagePayload('Test Page', { type: 'doc', content: [] }, 'parent123', 5, 'TEST', true, true)
+
+      expect(payload.version).toEqual({ number: 5 })
+      expect(payload.ancestors).toEqual([{ id: 'parent123' }])
+    })
+
     it('should handle string Atlas document', () => {
       const atlasJson = JSON.stringify({
         type: 'doc',

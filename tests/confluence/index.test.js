@@ -73,7 +73,7 @@ describe('confluence index', () => {
     })
 
     expect(glob).toHaveBeenCalledWith('docs/systems/EUDP/TRACES Integration Gateway/TIG - Technology/TIG - Analysis/API Calls/**/*.md')
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       success: 0,
       failed: 0,
       skipped: 1

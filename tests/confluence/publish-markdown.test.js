@@ -20,6 +20,7 @@ jest.mock('../../lib/confluence/lib/page-manager', () => ({
 
 jest.mock('../../lib/confluence/lib/content-processor', () => ({
   extractTitle: jest.fn(),
+  extractConfluenceParent: jest.fn(),
   readFileContent: jest.fn(),
   filterContentForFormat: jest.fn(),
   convertMarkdownToAtlasDoc: jest.fn(),
@@ -89,6 +90,7 @@ describe('publishing a markdown page', () => {
     hierarchyManager.getSpaceForPath.mockResolvedValue('EUDP')
     hierarchyManager.getParentForPath.mockResolvedValue('1')
     contentProcessor.extractTitle.mockImplementation(async (file) => file.endsWith('other.md') ? 'Other' : 'Page')
+    contentProcessor.extractConfluenceParent.mockResolvedValue(null)
     contentProcessor.readFileContent.mockResolvedValue('# Page\n\n![d](diagrams/d.svg)\n\nSee [next](other.md#part).')
     contentProcessor.filterContentForFormat.mockImplementation(content => content)
     contentProcessor.convertMarkdownToAtlasDoc.mockResolvedValue({ type: 'doc', content: [] })
@@ -121,12 +123,59 @@ describe('publishing a markdown page', () => {
     )
   })
 
+  it('keeps the folder parent and does not reparent when the frontmatter names no parent', async () => {
+    imageHandler.uploadImageAttachment.mockResolvedValue({ attachmentId: 'att1', fileId: 'f1', filename: 'd.svg' })
+
+    await publish(options)
+
+    expect(pageManager.createPagePayload).toHaveBeenCalledWith('Page', expect.anything(), '1', 4, 'EUDP', true, false)
+  })
+
+  it('moves the page under the parent its frontmatter names, found by title', async () => {
+    imageHandler.uploadImageAttachment.mockResolvedValue({ attachmentId: 'att1', fileId: 'f1', filename: 'd.svg' })
+    contentProcessor.extractConfluenceParent.mockResolvedValue('Parent Page')
+    apiClient.findPageByTitle.mockImplementation(async (title) => title === 'Parent Page'
+      ? { count: 1, page: { results: [{ id: '777', version: { number: 1 }, status: 'current' }] } }
+      : { count: 1, page: { results: [{ id: '555', version: { number: 3 }, status: 'current' }] } })
+
+    await publish(options)
+
+    expect(apiClient.findPageByTitle).toHaveBeenCalledWith('Parent Page', 'EUDP', options.auth)
+    expect(pageManager.createPagePayload).toHaveBeenCalledWith('Page', expect.anything(), '777', 4, 'EUDP', true, true)
+  })
+
+  it('fails the page rather than publish it in the wrong place when the named parent does not exist', async () => {
+    contentProcessor.extractConfluenceParent.mockResolvedValue('Missing Parent')
+    apiClient.findPageByTitle.mockImplementation(async (title) => title === 'Missing Parent'
+      ? { count: 0, page: { results: [] } }
+      : { count: 1, page: { results: [{ id: '555', version: { number: 3 }, status: 'current' }] } })
+
+    const result = await publish(options)
+
+    expect(result.failed).toBe(1)
+    expect(apiClient.confluenceRequest).not.toHaveBeenCalledWith('PUT', expect.anything(), expect.anything())
+  })
+
+  it('checks the links on the published page and counts a broken one', async () => {
+    imageHandler.uploadImageAttachment.mockResolvedValue({ attachmentId: 'att1', fileId: 'f1', filename: 'd.svg' })
+    const stored = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x', marks: [{ type: 'link', attrs: { href: '#nowhere' } }] }] }] }
+    apiClient.confluenceRequest.mockImplementation(async (method, endpoint) =>
+      method === 'GET' && endpoint === '/content/555?expand=body.atlas_doc_format'
+        ? { status: 200, body: { title: 'Page', body: { atlas_doc_format: { value: JSON.stringify(stored) } } } }
+        : { status: 200, body: {} })
+
+    const result = await publish(options)
+
+    expect(result).toMatchObject({ success: 1, failed: 0, brokenLinks: 1, unreachableLinks: 0 })
+    expect(console.error).toHaveBeenCalledWith("  ❌ Broken link on 'Page': #nowhere (no heading on this page has that anchor)")
+  })
+
   it('counts the page as published when every image uploads', async () => {
     imageHandler.uploadImageAttachment.mockResolvedValue({ attachmentId: 'att1', fileId: 'f1', filename: 'd.svg' })
 
     const result = await publish(options)
 
-    expect(result).toEqual({ success: 1, failed: 0, skipped: 1 })
+    expect(result).toMatchObject({ success: 1, failed: 0, skipped: 1 })
     expect(imageHandler.replaceImagePlaceholdersAtlas).toHaveBeenCalled()
     expect(imageHandler.uploadImageAttachment).toHaveBeenCalledWith(
       '555', expect.stringMatching(/diagrams[\\/]d\.svg$/), options.auth, 'docs/systems/EUDP/page.md'
@@ -138,7 +187,7 @@ describe('publishing a markdown page', () => {
 
     const result = await publish(options)
 
-    expect(result).toEqual({ success: 0, failed: 1, skipped: 1 })
+    expect(result).toMatchObject({ success: 0, failed: 1, skipped: 1 })
     expect(console.error).toHaveBeenCalledWith(
       '  ❌ Failed to publish docs/systems/EUDP/page.md: 1 image upload(s) failed: d.svg'
     )
@@ -150,7 +199,7 @@ describe('publishing a markdown page', () => {
 
     const result = await publish(options)
 
-    expect(result).toEqual({ success: 1, failed: 0, skipped: 1 })
+    expect(result).toMatchObject({ success: 1, failed: 0, skipped: 1 })
     expect(imageHandler.uploadImageAttachment).toHaveBeenCalledTimes(1)
     expect(imageHandler.replaceImagePlaceholdersAtlas).toHaveBeenCalledWith(
       expect.anything(), [expect.objectContaining({ viewId: 'd.svg', originalPath: 'diagrams/d.svg' })], '555'
@@ -163,7 +212,7 @@ describe('publishing a markdown page', () => {
 
     const result = await publish(options)
 
-    expect(result).toEqual({ success: 0, failed: 1, skipped: 1 })
+    expect(result).toMatchObject({ success: 0, failed: 1, skipped: 1 })
     expect(imageHandler.uploadImageAttachment).toHaveBeenCalledTimes(1)
     expect(console.error).toHaveBeenCalledWith(
       '  ❌ Failed to publish docs/systems/EUDP/page.md: 1 image upload(s) failed: d.svg'
@@ -177,7 +226,7 @@ describe('publishing a markdown page', () => {
 
     const result = await publish(options)
 
-    expect(result).toEqual({ success: 1, failed: 0, skipped: 1 })
+    expect(result).toMatchObject({ success: 1, failed: 0, skipped: 1 })
     expect(imageHandler.uploadImageAttachment).toHaveBeenCalledTimes(1)
   })
 
@@ -188,7 +237,7 @@ describe('publishing a markdown page', () => {
 
     const result = await publish(options)
 
-    expect(result).toEqual({ success: 1, failed: 0, skipped: 1 })
+    expect(result).toMatchObject({ success: 1, failed: 0, skipped: 1 })
     expect(imageHandler.uploadImageAttachment).toHaveBeenCalledTimes(1)
   })
 
@@ -200,7 +249,7 @@ describe('publishing a markdown page', () => {
 
     const result = await publish(options)
 
-    expect(result).toEqual({ success: 0, failed: 1, skipped: 1 })
+    expect(result).toMatchObject({ success: 0, failed: 1, skipped: 1 })
     expect(imageHandler.replaceImagePlaceholdersAtlas).toHaveBeenCalledWith(
       expect.anything(), [expect.objectContaining({ viewId: 'd.svg' })], '555'
     )
@@ -240,7 +289,7 @@ describe('publishing a markdown page', () => {
 
     const result = await publish({ ...options, fileFilter: null })
 
-    expect(result).toEqual({ success: 0, failed: 1, skipped: 0 })
+    expect(result).toMatchObject({ success: 0, failed: 1, skipped: 0 })
     expect(console.error).toHaveBeenCalledWith('  ⚠️  File not found: docs/systems/EUDP/missing.md')
   })
 
@@ -249,7 +298,7 @@ describe('publishing a markdown page', () => {
 
     const result = await publish(options)
 
-    expect(result).toEqual({ success: 1, failed: 0, skipped: 0 })
+    expect(result).toMatchObject({ success: 1, failed: 0, skipped: 0 })
     expect(contentProcessor.convertMarkdownToAtlasDoc).not.toHaveBeenCalled()
     expect(console.error).toHaveBeenCalledWith('  Publishing diagram: Page')
   })

@@ -121,6 +121,7 @@ describe('hierarchy-manager', () => {
             storage: { value: '<ac:structured-macro ac:name="error"></ac:structured-macro>' },
             atlas_doc_format: { value: '' }
           },
+          metadata: { labels: { results: [{ name: 'generated' }] } },
           version: { number: 1 }
         }
       })
@@ -137,9 +138,48 @@ describe('hierarchy-manager', () => {
       expect(apiClient.confluenceRequest).toHaveBeenCalledTimes(1)
       expect(apiClient.confluenceRequest).toHaveBeenCalledWith(
         'GET',
-        '/content/folder-123?expand=body.atlas_doc_format,body.storage,version',
+        '/content/folder-123?expand=body.atlas_doc_format,body.storage,version,metadata.labels',
         expect.any(Object)
       )
+    })
+  })
+
+  describe('updating an existing folder page', () => {
+    const folderPath = 'docs/Trade/Delivery Information Architecture'
+    const auth = { username: 'user', apiToken: 'token' }
+
+    function existingFolder (body) {
+      apiClient.getPageByTitle.mockResolvedValueOnce({ results: [{ id: 'folder-123', ancestors: [] }] })
+      apiClient.confluenceRequest.mockResolvedValueOnce({ status: 200, body: { version: { number: 1 }, ...body } })
+    }
+
+    it('leaves a native Confluence folder alone', async () => {
+      existingFolder({ type: 'folder', body: { atlas_doc_format: { value: '' } } })
+
+      await hierarchyManager.getOrCreateFolder('Delivery Information Architecture', null, 'TIDIA', folderPath, auth)
+
+      expect(apiClient.confluenceRequest).toHaveBeenCalledTimes(1)
+    })
+
+    it('leaves a page without the generated label alone', async () => {
+      existingFolder({ type: 'page', body: { atlas_doc_format: { value: '' } }, metadata: { labels: { results: [{ name: 'manual' }] } } })
+
+      await hierarchyManager.getOrCreateFolder('Delivery Information Architecture', null, 'TIDIA', folderPath, auth)
+
+      expect(apiClient.confluenceRequest).toHaveBeenCalledTimes(1)
+    })
+
+    it('rewrites a generated page that lacks the warning panel, and reports why an update fails', async () => {
+      existingFolder({ type: 'page', body: { atlas_doc_format: { value: '' } }, metadata: { labels: { results: [{ name: 'generated' }] } } })
+      apiClient.confluenceRequest.mockResolvedValueOnce({ status: 400, body: { message: 'Bad request' } })
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+      await hierarchyManager.getOrCreateFolder('Delivery Information Architecture', null, 'TIDIA', folderPath, auth)
+
+      expect(apiClient.confluenceRequest).toHaveBeenCalledTimes(2)
+      expect(apiClient.confluenceRequest).toHaveBeenLastCalledWith('PUT', '/content/folder-123', expect.any(Object))
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('(HTTP 400): Bad request'))
+      errorSpy.mockRestore()
     })
   })
 })

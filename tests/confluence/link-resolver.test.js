@@ -89,10 +89,45 @@ describe('link-resolver', () => {
   })
 
   describe('rewriteLinks', () => {
-    it('links a published target to its Confluence page and drops the anchor', async () => {
+    it('links to the top of the page with a warning when no heading in the target has the anchor', async () => {
       const { resolver } = makeResolver()
       const result = await resolver.rewriteLinks('See [the page](sub%20dir/published%20page.md#part-two).', source)
       expect(result).toBe(`See [the page](${confluenceLink}).`)
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '    ⚠️  Anchor not found: sub%20dir/published%20page.md#part-two (no heading in the target has that slug); linking to the top of the page'
+      )
+    })
+
+    it('translates a GitHub slug to the Confluence anchor of the heading in the target', async () => {
+      fs.writeFileSync(published, '---\ntitle: "Published"\n---\n\n# Title\n\n## Part Two\n\n### IDM\'s `Answer`\n')
+      const { resolver } = makeResolver()
+      const content = '[a](sub%20dir/published%20page.md#part-two) [b](sub%20dir/published%20page.md#idms-answer)'
+      expect(await resolver.rewriteLinks(content, source))
+        .toBe(`[a](${confluenceLink}#Part-Two) [b](${confluenceLink}#IDM's-Answer)`)
+      expect(consoleErrorSpy).not.toHaveBeenCalled()
+    })
+
+    it('numbers a repeated heading as GitHub does', async () => {
+      fs.writeFileSync(published, '## End State\n\n### Scenario 5\n\n## End State\n\n### Scenario 6\n')
+      const { resolver } = makeResolver()
+      expect(await resolver.rewriteLinks('[s6](sub%20dir/published%20page.md#scenario-6)', source))
+        .toBe(`[s6](${confluenceLink}#Scenario-6)`)
+    })
+
+    it('keeps the GitHub slug when the link falls back to GitHub', async () => {
+      const { resolver } = makeResolver()
+      expect(await resolver.rewriteLinks('[next](unpublished.md#part-two)', source))
+        .toBe('[next](https://github.com/org/repo/blob/main/unpublished.md#part-two)')
+    })
+
+    it('translates an anchor within the page to the heading\'s Confluence anchor', async () => {
+      const { resolver } = makeResolver()
+      const content = '## End State\n\nSee [End State](#end-state) and [nowhere](#nowhere).'
+      expect(await resolver.rewriteLinks(content, source))
+        .toBe('## End State\n\nSee [End State](#End-State) and [nowhere](#nowhere).')
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '    ⚠️  Anchor not found: #nowhere (no heading on this page has that slug); left unchanged'
+      )
     })
 
     it('rewrites links with a title or an angle-bracketed URL, dropping the title', async () => {
