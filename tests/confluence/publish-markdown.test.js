@@ -349,6 +349,18 @@ describe('publishing a markdown page', () => {
     expect(imageHandler.uploadImageAttachment).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the width a MermaidDiagram tag sets through to placement', async () => {
+    contentProcessor.readFileContent.mockResolvedValue('# Page\n\n<MermaidDiagram diagramId="flow" width="900" />')
+    imageHandler.findMermaidDiagram.mockResolvedValue('build/mmd/flow.svg')
+    imageHandler.uploadImageAttachment.mockResolvedValue({ attachmentId: 'att2', fileId: 'f2', filename: 'flow.svg' })
+
+    await publish(options)
+
+    expect(imageHandler.replaceImagePlaceholdersAtlas).toHaveBeenCalledWith(
+      expect.anything(), [expect.objectContaining({ viewId: 'flow', width: 900 })], '555'
+    )
+  })
+
   it('uploads a file used both as a Mermaid diagram and as a markdown image once', async () => {
     contentProcessor.readFileContent.mockResolvedValue('# Page\n\n<MermaidDiagram diagramId="flow" />\n\n![flow](../../../build/mmd/flow.svg)')
     imageHandler.findMermaidDiagram.mockResolvedValue('build/mmd/flow.svg')
