@@ -26,7 +26,9 @@ jest.mock('../../lib/confluence/lib/content-processor', () => ({
   readFileContent: jest.fn(),
   filterContentForFormat: jest.fn(),
   convertMarkdownToAtlasDoc: jest.fn(),
-  addWarningPanelToAtlas: jest.fn()
+  addWarningPanelToAtlas: jest.fn(),
+  convertMarkdownToStorage: jest.fn(),
+  addWarningPanelToContent: jest.fn()
 }))
 
 jest.mock('../../lib/confluence/lib/github', () => ({
@@ -40,7 +42,8 @@ jest.mock('../../lib/confluence/lib/image-handler', () => ({
   findMermaidSource: jest.fn(),
   findUnchangedAttachment: jest.fn(),
   uploadImageAttachment: jest.fn(),
-  replaceImagePlaceholdersAtlas: jest.fn()
+  replaceImagePlaceholdersAtlas: jest.fn(),
+  replaceImagePlaceholders: jest.fn()
 }))
 
 jest.mock('../../lib/confluence/lib/hierarchy-manager', () => ({
@@ -355,6 +358,23 @@ describe('publishing a markdown page', () => {
 
     expect(result).toMatchObject({ success: 1, failed: 0, skipped: 1 })
     expect(imageHandler.uploadImageAttachment).toHaveBeenCalledTimes(1)
+  })
+
+  it('places the images in the storage-format body when the ADF conversion fails', async () => {
+    contentProcessor.convertMarkdownToAtlasDoc.mockRejectedValue(new Error('converter missing'))
+    contentProcessor.addWarningPanelToContent.mockImplementation(content => content)
+    contentProcessor.convertMarkdownToStorage.mockReturnValue('<p>storage body</p>')
+    imageHandler.replaceImagePlaceholders.mockReturnValue('<p>storage body with image</p>')
+    imageHandler.uploadImageAttachment.mockResolvedValue({ attachmentId: 'att1', fileId: 'f1', filename: 'd.svg' })
+
+    const result = await publish(options)
+
+    expect(result).toMatchObject({ success: 1, failed: 0, skipped: 1 })
+    expect(imageHandler.replaceImagePlaceholders).toHaveBeenCalledWith(
+      '<p>storage body</p>', [expect.objectContaining({ viewId: 'd.svg' })], 'storage'
+    )
+    expect(imageHandler.replaceImagePlaceholdersAtlas).not.toHaveBeenCalled()
+    expect(pageManager.createPagePayload).toHaveBeenCalledWith('Page', '<p>storage body with image</p>', '1', 4, 'EUDP', false, false)
   })
 
   it('counts the page as failed and writes nothing when one of two uploads fails', async () => {
