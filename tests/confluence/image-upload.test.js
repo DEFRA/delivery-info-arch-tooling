@@ -1,5 +1,5 @@
 /**
- * Unit tests for uploadImageAttachment in confluence/lib/image-handler.js
+ * Unit tests for uploadImageAttachment and findUnchangedAttachment in confluence/lib/image-handler.js
  */
 
 const fs = require('fs')
@@ -13,18 +13,23 @@ jest.mock('../../lib/confluence/lib/api-client', () => ({ confluenceRequest: jes
 
 const https = require('https')
 const { confluenceRequest } = require('../../lib/confluence/lib/api-client')
-const { setConfig, uploadImageAttachment } = require('../../lib/confluence/lib/image-handler')
+const { setConfig, uploadImageAttachment, findUnchangedAttachment } = require('../../lib/confluence/lib/image-handler')
 
 const auth = { username: 'user', apiToken: 'token' }
+const basicAuth = `Basic ${Buffer.from('user:token').toString('base64')}`
+const svg = '<svg xmlns="http://www.w3.org/2000/svg"/>'
 
 /**
- * Make https.request answer with the given status and body, and record
- * the request options and the multipart body sent
+ * Make https.request answer each call with the next of the given responses,
+ * and record the request options and the multipart body last sent
  */
-function mockResponse (status, body, statusMessage = '') {
+function mockResponses (responses) {
+  const queue = [...responses]
   const sent = { options: null, body: '' }
   https.request.mockImplementation((options, callback) => {
+    const { status, body, statusMessage = '' } = queue.shift()
     sent.options = options
+    sent.body = ''
     const req = new PassThrough()
     req.on('data', chunk => { sent.body += chunk.toString() })
     req.on('end', () => {
@@ -41,6 +46,13 @@ function mockResponse (status, body, statusMessage = '') {
   return sent
 }
 
+/**
+ * Make https.request answer every call with the given status and body
+ */
+function mockResponse (status, body, statusMessage = '') {
+  return mockResponses([{ status, body, statusMessage }])
+}
+
 describe('uploadImageAttachment', () => {
   let tmpDir
   let imagePath
@@ -48,7 +60,7 @@ describe('uploadImageAttachment', () => {
 
   beforeEach(() => {
     jest.clearAllMocks()
-    setConfig({ confluenceUrl: 'https://test.atlassian.net', dryRun: false })
+    setConfig({ confluenceUrl: 'https://test.atlassian.net', dryRun: false, uploadRetryDelayMs: 0 })
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'image-upload-'))
     imagePath = path.join(tmpDir, 'diagram.svg')
     fs.writeFileSync(imagePath, '<svg xmlns="http://www.w3.org/2000/svg"/>')
@@ -107,7 +119,41 @@ describe('uploadImageAttachment', () => {
     const result = await uploadImageAttachment('123', imagePath, auth)
 
     expect(result).toBeNull()
+    expect(https.request).toHaveBeenCalledTimes(1)
     expect(consoleErrorSpy).toHaveBeenCalledWith('    ❌ Failed to upload image (HTTP 400): Bad Request')
+  })
+
+  it('retries once after the pause when the upload answers HTTP 500, and takes the second answer', async () => {
+    setConfig({ uploadRetryDelayMs: 10 })
+    const timeoutSpy = jest.spyOn(global, 'setTimeout')
+    mockResponses([
+      { status: 500, body: { message: 'Transaction rolled back because it has been marked as rollback-only' } },
+      { status: 200, body: { results: [{ id: 'att42', title: 'diagram.svg', version: { number: 14 }, extensions: { fileId: 'file-14' } }] } }
+    ])
+
+    const result = await uploadImageAttachment('123', imagePath, auth)
+
+    expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 10)
+    expect(https.request).toHaveBeenCalledTimes(2)
+    expect(result).toEqual({ attachmentId: 'att42', fileId: 'file-14', filename: 'diagram.svg' })
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '    ⚠️  Upload of diagram.svg answered HTTP 500, retrying once after 10 ms: Transaction rolled back because it has been marked as rollback-only'
+    )
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(expect.stringContaining('❌'))
+    timeoutSpy.mockRestore()
+  })
+
+  it('counts the upload as failed after a second HTTP 500', async () => {
+    mockResponses([
+      { status: 500, body: { message: 'rolled back' } },
+      { status: 500, body: { message: 'rolled back again' } }
+    ])
+
+    const result = await uploadImageAttachment('123', imagePath, auth)
+
+    expect(result).toBeNull()
+    expect(https.request).toHaveBeenCalledTimes(2)
+    expect(consoleErrorSpy).toHaveBeenCalledWith('    ❌ Failed to upload image (HTTP 500): rolled back again')
   })
 
   it('accepts a 201 with the attachment at the top level of the body', async () => {
@@ -151,5 +197,140 @@ describe('uploadImageAttachment', () => {
 
     expect(result).toBeNull()
     expect(https.request).not.toHaveBeenCalled()
+  })
+})
+
+describe('findUnchangedAttachment', () => {
+  let tmpDir
+  let imagePath
+  let consoleErrorSpy
+  let fetchSpy
+
+  const attachment = {
+    id: 'att5',
+    title: 'diagram.svg',
+    version: { number: 13 },
+    extensions: { fileId: 'file-13' },
+    _links: { download: '/download/attachments/123/diagram.svg?version=13&api=v2' }
+  }
+  const listing = (results, links = { base: 'https://other.example/wiki' }) => ({
+    status: 200,
+    body: { results, ...(links && { _links: links }) }
+  })
+  const download = (text, ok = true) => ({ ok, status: ok ? 200 : 404, arrayBuffer: async () => Buffer.from(text) })
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    setConfig({ confluenceUrl: 'https://test.atlassian.net', dryRun: false })
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'image-compare-'))
+    imagePath = path.join(tmpDir, 'diagram.svg')
+    fs.writeFileSync(imagePath, svg)
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(download(svg))
+  })
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+    consoleErrorSpy.mockRestore()
+    fetchSpy.mockRestore()
+  })
+
+  it('returns the current attachment when its bytes equal the image file, without uploading', async () => {
+    confluenceRequest.mockResolvedValueOnce(listing([attachment]))
+
+    const result = await findUnchangedAttachment('123', imagePath, auth)
+
+    expect(confluenceRequest).toHaveBeenCalledWith(
+      'GET', '/content/123/child/attachment?filename=diagram.svg&expand=version', { auth }
+    )
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://other.example/wiki/download/attachments/123/diagram.svg?version=13&api=v2',
+      { headers: { Authorization: basicAuth } }
+    )
+    expect(result).toEqual({ attachmentId: 'att5', fileId: 'file-13', filename: 'diagram.svg', version: 13 })
+    expect(https.request).not.toHaveBeenCalled()
+    expect(consoleErrorSpy).toHaveBeenCalledWith('    → Image unchanged, reusing attachment version 13: diagram.svg')
+  })
+
+  it('downloads from the configured site when the listing names no base', async () => {
+    confluenceRequest.mockResolvedValueOnce(listing([attachment], null))
+
+    await findUnchangedAttachment('123', imagePath, auth)
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://test.atlassian.net/wiki/download/attachments/123/diagram.svg?version=13&api=v2',
+      expect.anything()
+    )
+  })
+
+  it('matches the attachment by file name regardless of case', async () => {
+    confluenceRequest.mockResolvedValueOnce(listing([{ ...attachment, title: 'Diagram.SVG' }]))
+
+    const result = await findUnchangedAttachment('123', imagePath, auth)
+
+    expect(result).toMatchObject({ attachmentId: 'att5', filename: 'Diagram.SVG' })
+  })
+
+  it('returns null when the attachment bytes differ from the image file', async () => {
+    confluenceRequest.mockResolvedValueOnce(listing([attachment]))
+    fetchSpy.mockResolvedValue(download('<svg/>'))
+
+    const result = await findUnchangedAttachment('123', imagePath, auth)
+
+    expect(result).toBeNull()
+  })
+
+  it('returns null without downloading when the listing reports a different size', async () => {
+    confluenceRequest.mockResolvedValueOnce(listing([{ ...attachment, extensions: { fileId: 'file-13', fileSize: 999 } }]))
+
+    const result = await findUnchangedAttachment('123', imagePath, auth)
+
+    expect(result).toBeNull()
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('downloads and compares when the listing reports the same size', async () => {
+    confluenceRequest.mockResolvedValueOnce(listing([{ ...attachment, extensions: { fileId: 'file-13', fileSize: Buffer.byteLength(svg) } }]))
+
+    const result = await findUnchangedAttachment('123', imagePath, auth)
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(result).toMatchObject({ attachmentId: 'att5', fileId: 'file-13' })
+  })
+
+  it('returns null without downloading when the page has no attachment with that file name', async () => {
+    confluenceRequest.mockResolvedValueOnce(listing([]))
+
+    const result = await findUnchangedAttachment('123', imagePath, auth)
+
+    expect(result).toBeNull()
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('returns null when the download is refused', async () => {
+    confluenceRequest.mockResolvedValueOnce(listing([attachment]))
+    fetchSpy.mockResolvedValue(download('', false))
+
+    const result = await findUnchangedAttachment('123', imagePath, auth)
+
+    expect(result).toBeNull()
+  })
+
+  it('returns null and says so when the listing fails', async () => {
+    confluenceRequest.mockRejectedValueOnce(new Error('HTTP request failed: read ECONNRESET'))
+
+    const result = await findUnchangedAttachment('123', imagePath, auth)
+
+    expect(result).toBeNull()
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "    🔍 Could not compare 'diagram.svg' with its attachment, uploading it: HTTP request failed: read ECONNRESET"
+    )
+  })
+
+  it('returns null without a request when the image file does not exist', async () => {
+    const result = await findUnchangedAttachment('123', path.join(tmpDir, 'missing.svg'), auth)
+
+    expect(result).toBeNull()
+    expect(confluenceRequest).not.toHaveBeenCalled()
   })
 })

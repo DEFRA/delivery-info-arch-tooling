@@ -3,6 +3,7 @@
  */
 
 const fs = require('fs')
+const path = require('path')
 
 jest.mock('../../lib/confluence/lib/api-client', () => ({
   setConfig: jest.fn(),
@@ -15,7 +16,8 @@ jest.mock('../../lib/confluence/lib/page-manager', () => ({
   setConfig: jest.fn(),
   isPageSafeToUpdate: jest.fn(),
   createPagePayload: jest.fn(),
-  addLabelToPage: jest.fn()
+  addLabelToPage: jest.fn(),
+  handle403Error: jest.fn()
 }))
 
 jest.mock('../../lib/confluence/lib/content-processor', () => ({
@@ -24,7 +26,9 @@ jest.mock('../../lib/confluence/lib/content-processor', () => ({
   readFileContent: jest.fn(),
   filterContentForFormat: jest.fn(),
   convertMarkdownToAtlasDoc: jest.fn(),
-  addWarningPanelToAtlas: jest.fn()
+  addWarningPanelToAtlas: jest.fn(),
+  convertMarkdownToStorage: jest.fn(),
+  addWarningPanelToContent: jest.fn()
 }))
 
 jest.mock('../../lib/confluence/lib/github', () => ({
@@ -36,8 +40,10 @@ jest.mock('../../lib/confluence/lib/image-handler', () => ({
   setConfig: jest.fn(),
   findMermaidDiagram: jest.fn(),
   findMermaidSource: jest.fn(),
+  findUnchangedAttachment: jest.fn(),
   uploadImageAttachment: jest.fn(),
-  replaceImagePlaceholdersAtlas: jest.fn()
+  replaceImagePlaceholdersAtlas: jest.fn(),
+  replaceImagePlaceholders: jest.fn()
 }))
 
 jest.mock('../../lib/confluence/lib/hierarchy-manager', () => ({
@@ -105,8 +111,34 @@ describe('publishing a markdown page', () => {
     pageManager.isPageSafeToUpdate.mockResolvedValue(true)
     pageManager.createPagePayload.mockReturnValue({})
     pageManager.addLabelToPage.mockResolvedValue(true)
+    imageHandler.findUnchangedAttachment.mockResolvedValue(null)
     imageHandler.replaceImagePlaceholdersAtlas.mockImplementation(async atlas => atlas)
   })
+
+  // Record the page writes, uploads and label adds in the order they happen,
+  // with the version each write carries
+  function recordCalls () {
+    const calls = []
+    pageManager.createPagePayload.mockImplementation((title, body, parent, version) =>
+      version ? { version: { number: version } } : {})
+    pageManager.addLabelToPage.mockImplementation(async () => { calls.push('label') })
+    imageHandler.uploadImageAttachment.mockImplementation(async (pageId, imagePath) => {
+      const name = path.basename(imagePath)
+      calls.push(`upload ${name} to ${pageId}`)
+      return { attachmentId: `att-${path.basename(name, '.svg')}`, fileId: 'f', filename: name }
+    })
+    apiClient.confluenceRequest.mockImplementation(async (method, endpoint, { body } = {}) => {
+      if (method === 'POST') {
+        calls.push('POST /content')
+        return { status: 201, body: { id: '600' } }
+      }
+      if (method === 'PUT') {
+        calls.push(`PUT ${endpoint} v${body.version.number}`)
+      }
+      return { status: 200, body: {} }
+    })
+    return calls
+  }
 
   afterEach(() => {
     while (spies.length) spies.pop().mockRestore()
@@ -182,15 +214,102 @@ describe('publishing a markdown page', () => {
     )
   })
 
-  it('counts the page as failed when an image upload fails', async () => {
+  it('uploads every image before the one page write, at the looked-up version plus one', async () => {
+    contentProcessor.readFileContent.mockResolvedValue('# Page\n\n![a](diagrams/a.svg)\n\n![b](diagrams/b.svg)')
+    const calls = recordCalls()
+
+    const result = await publish(options)
+
+    expect(result).toMatchObject({ success: 1, failed: 0, skipped: 1 })
+    expect(calls).toEqual(['upload a.svg to 555', 'upload b.svg to 555', 'PUT /content/555 v4', 'label'])
+    expect(imageHandler.replaceImagePlaceholdersAtlas).toHaveBeenCalledWith(expect.anything(), [
+      expect.objectContaining({ viewId: 'a.svg', originalPath: 'diagrams/a.svg', attachmentInfo: 'att-a|f|a.svg' }),
+      expect.objectContaining({ viewId: 'b.svg', originalPath: 'diagrams/b.svg', attachmentInfo: 'att-b|f|b.svg' })
+    ], '555')
+    expect(console.error).toHaveBeenCalledWith('  ✅ Updated successfully (ID: 555)')
+  })
+
+  it('counts the page as failed and writes nothing to it when an image upload fails', async () => {
     imageHandler.uploadImageAttachment.mockResolvedValue(null)
 
     const result = await publish(options)
 
     expect(result).toMatchObject({ success: 0, failed: 1, skipped: 1 })
+    expect(apiClient.confluenceRequest).not.toHaveBeenCalledWith('PUT', expect.anything(), expect.anything())
+    expect(apiClient.confluenceRequest).not.toHaveBeenCalledWith('POST', expect.anything(), expect.anything())
+    expect(imageHandler.replaceImagePlaceholdersAtlas).not.toHaveBeenCalled()
+    expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining('Updated successfully'))
     expect(console.error).toHaveBeenCalledWith(
       '  ❌ Failed to publish docs/systems/EUDP/page.md: 1 image upload(s) failed: d.svg'
     )
+  })
+
+  it('reuses the current attachment when the image bytes are unchanged, without uploading', async () => {
+    imageHandler.findUnchangedAttachment.mockResolvedValue({ attachmentId: 'att1', fileId: 'f13', filename: 'd.svg', version: 13 })
+
+    const result = await publish(options)
+
+    expect(result).toMatchObject({ success: 1, failed: 0, skipped: 1 })
+    expect(imageHandler.findUnchangedAttachment).toHaveBeenCalledWith(
+      '555', expect.stringMatching(/diagrams[\\/]d\.svg$/), options.auth
+    )
+    expect(imageHandler.uploadImageAttachment).not.toHaveBeenCalled()
+    expect(imageHandler.replaceImagePlaceholdersAtlas).toHaveBeenCalledWith(
+      expect.anything(), [expect.objectContaining({ viewId: 'd.svg', attachmentInfo: 'att1|f13|d.svg' })], '555'
+    )
+    expect(apiClient.confluenceRequest).toHaveBeenCalledWith('PUT', '/content/555', expect.anything())
+    expect(console.error).not.toHaveBeenCalledWith('    → Uploaded manual diagram: d.svg')
+  })
+
+  it('creates a new page, attaches its images, then writes it once more at version 2', async () => {
+    apiClient.findPageByTitle.mockResolvedValue({ count: 0, page: { results: [] } })
+    const calls = recordCalls()
+
+    const result = await publish(options)
+
+    expect(result).toMatchObject({ success: 1, failed: 0, skipped: 1 })
+    expect(calls).toEqual(['POST /content', 'label', 'upload d.svg to 600', 'PUT /content/600 v2'])
+    expect(imageHandler.replaceImagePlaceholdersAtlas).toHaveBeenCalledWith(expect.anything(), expect.anything(), '600')
+    expect(console.error).toHaveBeenCalledWith('  ✅ Created successfully (ID: 600)')
+  })
+
+  it('leaves a new page at its first version when an image upload fails', async () => {
+    apiClient.findPageByTitle.mockResolvedValue({ count: 0, page: { results: [] } })
+    const calls = recordCalls()
+    imageHandler.uploadImageAttachment.mockResolvedValue(null)
+
+    const result = await publish(options)
+
+    expect(result).toMatchObject({ success: 0, failed: 1, skipped: 1 })
+    expect(calls).toEqual(['POST /content', 'label'])
+    expect(console.error).toHaveBeenCalledWith('  ✅ Created successfully (ID: 600)')
+    expect(console.error).toHaveBeenCalledWith(
+      '  ❌ Failed to publish docs/systems/EUDP/page.md: 1 image upload(s) failed: d.svg'
+    )
+  })
+
+  it('creates the page afresh, with its images attached again, when the update is refused', async () => {
+    const calls = recordCalls()
+    pageManager.handle403Error.mockResolvedValue({ canContinue: true })
+    apiClient.confluenceRequest.mockImplementation(async (method, endpoint, { body } = {}) => {
+      if (method === 'POST') {
+        calls.push('POST /content')
+        return { status: 201, body: { id: '600' } }
+      }
+      if (method === 'PUT') {
+        calls.push(`PUT ${endpoint} v${body.version.number}`)
+        return { status: endpoint === '/content/555' ? 403 : 200, body: {} }
+      }
+      return { status: 200, body: {} }
+    })
+
+    const result = await publish(options)
+
+    expect(result).toMatchObject({ success: 1, failed: 0, skipped: 1 })
+    expect(calls).toEqual([
+      'upload d.svg to 555', 'PUT /content/555 v4', 'POST /content', 'label', 'upload d.svg to 600', 'PUT /content/600 v2'
+    ])
+    expect(imageHandler.replaceImagePlaceholdersAtlas).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), '600')
   })
 
   it('uploads an image used twice on a page once', async () => {
@@ -230,6 +349,18 @@ describe('publishing a markdown page', () => {
     expect(imageHandler.uploadImageAttachment).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the width a MermaidDiagram tag sets through to placement', async () => {
+    contentProcessor.readFileContent.mockResolvedValue('# Page\n\n<MermaidDiagram diagramId="flow" width="900" />')
+    imageHandler.findMermaidDiagram.mockResolvedValue('build/mmd/flow.svg')
+    imageHandler.uploadImageAttachment.mockResolvedValue({ attachmentId: 'att2', fileId: 'f2', filename: 'flow.svg' })
+
+    await publish(options)
+
+    expect(imageHandler.replaceImagePlaceholdersAtlas).toHaveBeenCalledWith(
+      expect.anything(), [expect.objectContaining({ viewId: 'flow', width: 900 })], '555'
+    )
+  })
+
   it('uploads a file used both as a Mermaid diagram and as a markdown image once', async () => {
     contentProcessor.readFileContent.mockResolvedValue('# Page\n\n<MermaidDiagram diagramId="flow" />\n\n![flow](../../../build/mmd/flow.svg)')
     imageHandler.findMermaidDiagram.mockResolvedValue('build/mmd/flow.svg')
@@ -241,7 +372,24 @@ describe('publishing a markdown page', () => {
     expect(imageHandler.uploadImageAttachment).toHaveBeenCalledTimes(1)
   })
 
-  it('counts the page as failed when a diagram upload fails, after placing the images that uploaded', async () => {
+  it('places the images in the storage-format body when the ADF conversion fails', async () => {
+    contentProcessor.convertMarkdownToAtlasDoc.mockRejectedValue(new Error('converter missing'))
+    contentProcessor.addWarningPanelToContent.mockImplementation(content => content)
+    contentProcessor.convertMarkdownToStorage.mockReturnValue('<p>storage body</p>')
+    imageHandler.replaceImagePlaceholders.mockReturnValue('<p>storage body with image</p>')
+    imageHandler.uploadImageAttachment.mockResolvedValue({ attachmentId: 'att1', fileId: 'f1', filename: 'd.svg' })
+
+    const result = await publish(options)
+
+    expect(result).toMatchObject({ success: 1, failed: 0, skipped: 1 })
+    expect(imageHandler.replaceImagePlaceholders).toHaveBeenCalledWith(
+      '<p>storage body</p>', [expect.objectContaining({ viewId: 'd.svg' })], 'storage'
+    )
+    expect(imageHandler.replaceImagePlaceholdersAtlas).not.toHaveBeenCalled()
+    expect(pageManager.createPagePayload).toHaveBeenCalledWith('Page', '<p>storage body with image</p>', '1', 4, 'EUDP', false, false)
+  })
+
+  it('counts the page as failed and writes nothing when one of two uploads fails', async () => {
     contentProcessor.readFileContent.mockResolvedValue('# Page\n\n<MermaidDiagram diagramId="flow" />\n\n![d](diagrams/d.svg)')
     imageHandler.findMermaidDiagram.mockResolvedValue('/repo/build/mmd/flow.svg')
     imageHandler.uploadImageAttachment.mockImplementation(async (pageId, imagePath) =>
@@ -250,9 +398,9 @@ describe('publishing a markdown page', () => {
     const result = await publish(options)
 
     expect(result).toMatchObject({ success: 0, failed: 1, skipped: 1 })
-    expect(imageHandler.replaceImagePlaceholdersAtlas).toHaveBeenCalledWith(
-      expect.anything(), [expect.objectContaining({ viewId: 'd.svg' })], '555'
-    )
+    expect(imageHandler.uploadImageAttachment).toHaveBeenCalledTimes(2)
+    expect(apiClient.confluenceRequest).not.toHaveBeenCalledWith('PUT', expect.anything(), expect.anything())
+    expect(imageHandler.replaceImagePlaceholdersAtlas).not.toHaveBeenCalled()
     expect(console.error).toHaveBeenCalledWith(
       '  ❌ Failed to publish docs/systems/EUDP/page.md: 1 image upload(s) failed: flow.svg'
     )
