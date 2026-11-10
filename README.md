@@ -68,6 +68,22 @@ npm run pptx:build:editable "docs/overview.md"
 
 **Choose the right one.** The default export renders each slide in headless Chrome and embeds it as a full-slide image: it is pixel-accurate to the theme, but the file contains no text, so recipients cannot edit it, comment on it or collaborate on it. `--editable` routes the render through LibreOffice Impress and produces real text frames instead. Use the default for a deck you will present yourself, and `--editable` for one you send to other people.
 
+**Speaker notes.** Write a note as an HTML comment inside a `PPT_ONLY` block, on the slide it belongs to. Confluence and GitHub drop `PPT_ONLY` blocks, so the note appears only in the deck:
+
+```markdown
+## Context
+
+Slide content.
+
+<!-- PPT_ONLY -->
+<!--
+What to say on this slide.
+-->
+<!-- /PPT_ONLY -->
+```
+
+Both exports keep the notes. Marp's `--pptx-editable` route drops them, so after an editable build the tool exports the notes with `marp --notes` and writes them back into the PPTX. If the notes do not line up with the slides, the deck is kept without notes and a warning is printed.
+
 ### Exporting PDF
 
 ```bash
@@ -375,6 +391,7 @@ Options:
 
 - **Marp-based**: Uses Marp CLI for high-quality conversions. The default PPTX export embeds one rendered image per slide, so the deck carries no editable text
 - **Defra branding**: Bundled Defra templates and styling
+- **Speaker notes**: HTML comments become presenter notes, in editable decks as well as image decks
 - **Heading-based slides**: Configure which heading level triggers new slides (default: H1)
 - **Theme support**: Customizable themes and styling
 - **Diagram embedding**: Converts LikeC4View components to images
