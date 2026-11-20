@@ -109,6 +109,52 @@ describe('pdf/index', () => {
       expect(callArgs.stylesheet).toContain(cssPath)
     })
 
+    it('should pass no stylesheet by default', async () => {
+      const inputFile = 'docs/test.md'
+      fs.existsSync.mockImplementation(() => true)
+
+      await exportToPdf({ inputFile })
+
+      const mdToPdf = require('md-to-pdf')
+      const callArgs = mdToPdf.mock.calls[0][1]
+      expect(callArgs.stylesheet).toEqual([])
+    })
+
+    it('should use the bundled stylesheet when styled is set', async () => {
+      const inputFile = 'docs/test.md'
+      fs.existsSync.mockImplementation(() => true)
+
+      await exportToPdf({ inputFile, styled: true })
+
+      const mdToPdf = require('md-to-pdf')
+      const callArgs = mdToPdf.mock.calls[0][1]
+      expect(callArgs.stylesheet).toHaveLength(1)
+      expect(callArgs.stylesheet[0]).toContain('pdf-styles.css')
+    })
+
+    it('should prefer custom CSS over the bundled stylesheet when styled is set', async () => {
+      const inputFile = 'docs/test.md'
+      const cssPath = 'styles/custom.css'
+      fs.existsSync.mockImplementation(() => true)
+
+      await exportToPdf({ inputFile, cssPath, styled: true })
+
+      const mdToPdf = require('md-to-pdf')
+      const callArgs = mdToPdf.mock.calls[0][1]
+      expect(callArgs.stylesheet).toEqual([cssPath])
+    })
+
+    it('should pass no stylesheet when styled is set but the bundled one is missing', async () => {
+      const inputFile = 'docs/test.md'
+      fs.existsSync.mockImplementation((filePath) => !String(filePath).endsWith('pdf-styles.css'))
+
+      await exportToPdf({ inputFile, styled: true })
+
+      const mdToPdf = require('md-to-pdf')
+      const callArgs = mdToPdf.mock.calls[0][1]
+      expect(callArgs.stylesheet).toEqual([])
+    })
+
     it('should throw error if md-to-pdf is not available', async () => {
       // This test verifies the error message when md-to-pdf is missing
       // Since we're mocking md-to-pdf, we can't easily test this without
