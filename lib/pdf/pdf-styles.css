@@ -37,17 +37,24 @@ table {
   width: 100%;
   margin: 1em 0;
   font-size: 9pt;
+  line-height: 1.35;
   table-layout: auto;
 }
 
+/*
+ * overflow-wrap: break-word, not anywhere. "anywhere" shrinks each column's
+ * minimum width to a single character, so auto layout squeezes short columns
+ * (IDs, codes) until words split letter by letter. "break-word" only breaks a
+ * token that cannot otherwise fit.
+ */
 table th,
 table td {
   border: 1px solid #b1b4b6;
-  padding: 5px 7px;
+  padding: 4px 6px;
   text-align: left;
   vertical-align: top;
   word-break: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 table th {
